@@ -17,6 +17,7 @@ import {
   WifiIcon,
   PlusIcon,
   ShieldIcon,
+  ActivityIcon,
 } from './components/Icons';
 
 // Calculate duration in milliseconds from duration string or plan name
@@ -39,13 +40,13 @@ export default function HomePage() {
   const { user, profile, wallet, refreshWallet, loading: authLoading } = useAuth();
   const { appName } = useBranding();
 
-  // Gate: if not logged in and no guest session, redirect to auth
+  // Gate: if not logged in and no guest session, redirect to landing
   useEffect(() => {
     if (authLoading) return; // wait for auth to resolve
     if (!user) {
       const isGuest = typeof window !== 'undefined' && localStorage.getItem('asuk_guest_session');
       if (!isGuest) {
-        router.replace('/auth');
+        router.replace('/landing');
       }
     }
   }, [user, authLoading, router]);
@@ -198,7 +199,6 @@ export default function HomePage() {
 
     if (candidate) {
       // If the voucher is not used yet, the session timer has NOT started.
-      // MikroTik only begins counting session time when the user logs in for the first time.
       if (!candidate.isUsed) {
         setActiveVoucher({ ...candidate, isUnused: true, expiresAt: null });
         setCountdownText('Ready to Connect');
@@ -299,7 +299,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ paddingBottom: '96px' }}>
       <SideDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <CheckoutModal
@@ -313,19 +313,68 @@ export default function HomePage() {
         }}
       />
 
-      {/* ── Top Bar ── */}
-      <header className="top-nav-bar">
-        <div className="top-nav-left">
+      {/* ── Top Bar (Redesigned Navbar) ── */}
+      <header className="top-nav-bar" style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '16px 0 12px',
+        position: 'relative',
+        zIndex: 40,
+      }}>
+        {/* Left: Menu Hamburger */}
+        <div className="top-nav-left" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             className="circle-icon-btn"
             onClick={() => setDrawerOpen(true)}
             aria-label="Menu"
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'var(--surface, #FFFFFF)',
+              border: '1.5px solid var(--border-light, #ECEEF2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.04)',
+              transition: 'transform 0.15s ease',
+            }}
           >
-            <MenuSliderIcon size={20} color="#121217" />
+            <MenuSliderIcon size={20} color="var(--text-primary, #121217)" />
           </button>
+
+          {/* Brand Pill */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 14px',
+            background: 'var(--surface, #FFFFFF)',
+            borderRadius: '999px',
+            border: '1.5px solid var(--border-light, #ECEEF2)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)',
+          }}>
+            <div style={{
+              width: '22px',
+              height: '22px',
+              borderRadius: '6px',
+              background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <WifiIcon size={13} color="#FFFFFF" />
+            </div>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary, #121217)', letterSpacing: '-0.3px' }}>
+              {appName || 'My Collective Sub'}
+            </span>
+          </div>
         </div>
 
-        <div className="top-nav-right">
+        {/* Right: Notification Bell & User Avatar */}
+        <div className="top-nav-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {/* Notification Bell */}
           <div style={{ position: 'relative' }}>
             <button
@@ -339,33 +388,88 @@ export default function HomePage() {
                 }
               }}
               aria-label="Notifications"
+              style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '50%',
+                background: 'var(--surface, #FFFFFF)',
+                border: '1.5px solid var(--border-light, #ECEEF2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 2px 10px rgba(0, 0, 0, 0.04)',
+                position: 'relative',
+              }}
             >
-              <BellIcon size={20} color="#121217" />
-              {unreadCount > 0 && <span className="notification-badge-dot" />}
+              <BellIcon size={20} color="var(--text-primary, #121217)" />
+              {unreadCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '9px',
+                  right: '9px',
+                  width: '9px',
+                  height: '9px',
+                  borderRadius: '50%',
+                  background: '#EF4444',
+                  boxShadow: '0 0 8px #EF4444',
+                }} />
+              )}
             </button>
 
             {/* Notification Dropdown */}
             {notifOpen && (
-              <div className="notif-dropdown">
-                <div className="notif-dropdown-header">
-                  <strong>Notifications</strong>
+              <div
+                className="notif-dropdown"
+                style={{
+                  position: 'absolute',
+                  top: '52px',
+                  right: 0,
+                  width: '310px',
+                  background: 'var(--surface, #FFFFFF)',
+                  borderRadius: '20px',
+                  border: '1.5px solid var(--border-light, #ECEEF2)',
+                  boxShadow: '0 16px 40px rgba(0, 0, 0, 0.12)',
+                  padding: '16px',
+                  zIndex: 999,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid var(--border-light, #ECEEF2)', paddingBottom: '10px' }}>
+                  <strong style={{ fontSize: '14px', color: 'var(--text-primary, #121217)' }}>Notifications</strong>
                   {unreadCount > 0 && (
-                    <span className="notif-unread-badge">{unreadCount} new</span>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#34A853', background: 'rgba(52, 168, 83, 0.12)', padding: '2px 8px', borderRadius: '999px' }}>
+                      {unreadCount} new
+                    </span>
                   )}
                 </div>
                 {notifications.length === 0 ? (
-                  <div className="notif-empty">No notifications yet</div>
+                  <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '13px', color: 'var(--text-muted, #8E8E93)' }}>
+                    No notifications yet
+                  </div>
                 ) : (
-                  <div className="notif-list">
-                    {notifications.slice(0, 10).map(n => (
-                      <div key={n.id} className={`notif-item ${!n.is_read ? 'unread' : ''}`}>
-                        <div className="notif-item-icon">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+                    {notifications.slice(0, 10).map((n) => (
+                      <div
+                        key={n.id}
+                        style={{
+                          display: 'flex',
+                          gap: '10px',
+                          padding: '8px',
+                          borderRadius: '12px',
+                          background: !n.is_read ? 'rgba(52, 168, 83, 0.06)' : 'transparent',
+                        }}
+                      >
+                        <div style={{ fontSize: '18px' }}>
                           {n.type === 'wallet_credit' ? '💰' : n.type === 'voucher_purchase' ? '🎟️' : '🔔'}
                         </div>
-                        <div className="notif-item-content">
-                          <div className="notif-item-title">{n.title}</div>
-                          <div className="notif-item-message">{n.message}</div>
-                          <div className="notif-item-time">
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary, #121217)' }}>
+                            {n.title}
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted, #8E8E93)', marginTop: '2px' }}>
+                            {n.message}
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>
                             {n.created_at ? new Date(n.created_at).toLocaleString(undefined, {
                               month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
                             }) : ''}
@@ -379,116 +483,260 @@ export default function HomePage() {
             )}
           </div>
 
+          {/* User Avatar Circle */}
           <div
-            className="user-avatar-circle"
-            onClick={() => router.push(user ? '/wallet' : '/auth')}
+            onClick={() => router.push(user ? '/auth' : '/auth')}
             aria-label="User profile"
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+              color: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '15px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              border: '2px solid #FFFFFF',
+              boxShadow: '0 3px 12px rgba(52, 168, 83, 0.35)',
+              position: 'relative',
+            }}
           >
             {initials}
+            {user && (
+              <span style={{
+                position: 'absolute',
+                bottom: '-1px',
+                right: '-1px',
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: '#10B981',
+                border: '2px solid #FFFFFF',
+              }} />
+            )}
           </div>
         </div>
       </header>
 
       {/* ── Greeting Header ── */}
-      <div className="greeting-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '10px',
+        margin: '12px 0 18px',
+      }}>
         <div>
-          <h1 className="greeting-title">{getGreeting()}, {displayName}!</h1>
-          <p className="greeting-sub">Manage your high-speed Wi-Fi &amp; wallet.</p>
+          <h1 style={{
+            fontSize: '22px',
+            fontWeight: 800,
+            color: 'var(--text-primary, #121217)',
+            margin: 0,
+            letterSpacing: '-0.4px',
+          }}>
+            {getGreeting()}, {displayName}!
+          </h1>
+          <p style={{
+            fontSize: '13px',
+            color: 'var(--text-muted, #8E8E93)',
+            margin: '3px 0 0',
+          }}>
+            Manage your high-speed Wi-Fi &amp; wallet.
+          </p>
         </div>
+
+        {/* Live Hotspot Status Pill */}
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '6px',
-          padding: '6px 12px',
+          gap: '7px',
+          padding: '6px 14px',
           borderRadius: '999px',
           background: 'rgba(52, 168, 83, 0.12)',
-          border: '1px solid rgba(52, 168, 83, 0.25)',
+          border: '1.5px solid rgba(52, 168, 83, 0.28)',
           color: '#34A853',
           fontSize: '12px',
-          fontWeight: 700,
+          fontWeight: 800,
         }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#34A853', boxShadow: '0 0 8px #34A853' }} />
+          <span style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#34A853',
+            boxShadow: '0 0 10px #34A853',
+          }} />
           Hotspot Ready
         </div>
       </div>
 
-      {/* ── Primary Wallet Card ── */}
-      <div className="wallet-card-container">
-        {/* Google Green Master Card */}
-        <div className="card-front-violet">
-          <div className="card-front-top">
-            <div className="card-front-logo">
+      {/* ── Primary Wallet Master Card (Redesigned) ── */}
+      <div className="wallet-card-container" style={{ marginBottom: '22px' }}>
+        <div
+          className="card-front-violet"
+          style={{
+            background: 'linear-gradient(135deg, #1A4D2E 0%, #153822 50%, #0F2A19 100%)',
+            borderRadius: '26px',
+            padding: '24px 22px 20px',
+            color: '#FFFFFF',
+            position: 'relative',
+            overflow: 'hidden',
+            boxShadow: '0 16px 36px -4px rgba(26, 77, 46, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12)',
+          }}
+        >
+          {/* Subtle Ambient Radial Glow */}
+          <div style={{
+            position: 'absolute',
+            top: '-60px',
+            right: '-60px',
+            width: '180px',
+            height: '180px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(52, 168, 83, 0.35) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
+
+          {/* Top Row: Chip, Wi-Fi Brand & PIN Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {/* Gold Chip Graphic */}
               <div style={{
-                width: 30,
-                height: 20,
-                borderRadius: 4,
-                background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)',
-                border: '1px solid rgba(255,255,255,0.4)',
-                boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.5)',
-                marginRight: 4,
-                display: 'inline-flex',
+                width: 32,
+                height: 22,
+                borderRadius: 5,
+                background: 'linear-gradient(135deg, #FFDF00 0%, #D4AF37 100%)',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.6), 0 2px 6px rgba(0,0,0,0.2)',
+                display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <div style={{ width: 12, height: 8, border: '1px solid rgba(0,0,0,0.25)', borderRadius: 2 }} />
+                <div style={{ width: 14, height: 9, border: '1px solid rgba(0,0,0,0.3)', borderRadius: 2 }} />
               </div>
-              <WifiIcon size={20} color="#FFFFFF" />
-              <span>{appName} Hotspot</span>
+
+              <WifiIcon size={18} color="#FFFFFF" />
+              <span style={{ fontSize: '13.5px', fontWeight: 800, letterSpacing: '-0.2px', opacity: 0.95 }}>
+                {appName || 'My Collective Sub'}
+              </span>
             </div>
 
-            {/* Hotspot PIN / ID Chip (Replacing credit card digits) */}
+            {/* Hotspot PIN / ID Chip */}
             <div
-              className="card-hotspot-pin-chip"
               onClick={handleCopyPin}
               title={activeVoucher?.code ? 'Click to copy Hotspot PIN' : 'No active pass'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                background: 'rgba(255, 255, 255, 0.14)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.22)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
             >
-              <span className="pin-prefix">{activeVoucher?.code ? 'PIN:' : 'ID:'}</span>
-              <span className="pin-code">{activeVoucher?.code || 'AFRICAN-WIFI'}</span>
-              <span className="pin-action-icon">{copiedPin ? '✓' : '📋'}</span>
+              <span style={{ fontSize: '10.5px', fontWeight: 800, opacity: 0.75, letterSpacing: '0.5px' }}>
+                {activeVoucher?.code ? 'PIN:' : 'ID:'}
+              </span>
+              <span style={{ fontSize: '12.5px', fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.8px' }}>
+                {activeVoucher?.code || 'MYCOLLECTIVESUB-WIFI'}
+              </span>
+              <span style={{ fontSize: '12px' }}>{copiedPin ? '✓' : '📋'}</span>
             </div>
           </div>
 
-          <div className="card-front-balance-row">
-            <div className="balance-meta-col">
-              <span className="balance-tag">Wallet Balance</span>
+          {/* Center Row: Balance & Expiry */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '22px' }}>
+            <div>
+              <span style={{ fontSize: '11.5px', fontWeight: 700, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                Wallet Balance
+              </span>
               <div
-                className="balance-main-amount"
                 onClick={() => setBalanceHidden(!balanceHidden)}
-                style={{ cursor: 'pointer' }}
+                style={{
+                  fontSize: '26px',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  letterSpacing: '-0.5px',
+                  marginTop: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
                 title="Click to toggle balance visibility"
               >
-                {balanceHidden ? '₦••••••••' : formatPrice(walletBalance)}
+                <span>{balanceHidden ? '₦••••••••' : formatPrice(walletBalance)}</span>
+                <span style={{ fontSize: '14px', opacity: 0.7 }}>{balanceHidden ? '👁️' : '👁️‍🗨️'}</span>
               </div>
             </div>
 
             <div
-              className="balance-exp-col"
               onClick={() => router.push(activeVoucher?.code ? `/vouchers/status?code=${encodeURIComponent(activeVoucher.code)}` : '/vouchers/status')}
-              style={{ cursor: 'pointer' }}
+              style={{ textAlign: 'right', cursor: 'pointer' }}
               title="Click to view live session timer & data used"
             >
-              <span className={`exp-tag ${isPassActive ? 'active' : ''}`}>
-                {activeVoucher?.isUnused ? '● Pass Ready' : (isPassActive ? '● Pass Expiry' : 'Voucher Expiry')}
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 800,
+                color: isPassActive ? '#4ADE80' : 'rgba(255,255,255,0.7)',
+                display: 'block',
+              }}>
+                {activeVoucher?.isUnused ? '● Pass Ready' : (isPassActive ? '● Pass Active' : '● No Active Pass')}
               </span>
-              <div className={`exp-val ${isPassActive ? 'exp-val-active' : ''}`}>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: 800,
+                color: isPassActive ? '#4ADE80' : 'rgba(255,255,255,0.9)',
+                fontFamily: "'JetBrains Mono', monospace",
+                marginTop: '2px',
+              }}>
                 {countdownText}
               </div>
             </div>
           </div>
 
-          <div className="card-front-bottom">
-            <div className="card-holder-info">
-              <span className="holder-tag">Hotspot User</span>
-              <div className="holder-name">{displayName}</div>
+          {/* Bottom Row: User Name & Cutout Top-Up Button */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingTop: '14px',
+            borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+          }}>
+            <div>
+              <span style={{ fontSize: '10.5px', fontWeight: 700, opacity: 0.7, textTransform: 'uppercase' }}>
+                Hotspot Member
+              </span>
+              <div style={{ fontSize: '14px', fontWeight: 800, marginTop: '1px' }}>
+                {displayName}
+              </div>
             </div>
 
-            {/* Nested Cutout Button */}
             <button
-              className="card-cutout-btn"
               onClick={() => router.push(user ? '/wallet' : '/auth')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 18px',
+                borderRadius: '999px',
+                background: '#FFFFFF',
+                color: '#153822',
+                border: 'none',
+                fontSize: '12.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+                transition: 'transform 0.15s ease',
+              }}
             >
-              <PlusIcon size={14} color="#FFFFFF" />
+              <PlusIcon size={14} color="#153822" />
               <span>Top Up</span>
             </button>
           </div>
@@ -497,102 +745,284 @@ export default function HomePage() {
 
       {/* ── Active Session Live Widget ── */}
       {isPassActive && activeVoucher && (
-        <div className="live-session-widget">
-          <div className="live-session-left">
-            <div className="live-session-indicator">
-              <WifiIcon size={22} color="#34A853" />
-              <span className="live-pulse-dot" />
+        <div style={{
+          background: 'var(--surface, #FFFFFF)',
+          borderRadius: '20px',
+          padding: '16px 18px',
+          border: '1.5px solid rgba(52, 168, 83, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '22px',
+          boxShadow: '0 6px 20px rgba(52, 168, 83, 0.08)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '14px',
+              background: 'rgba(52, 168, 83, 0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+            }}>
+              <WifiIcon size={20} color="#34A853" />
+              <span style={{
+                position: 'absolute',
+                top: '6px',
+                right: '6px',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#34A853',
+                boxShadow: '0 0 8px #34A853',
+              }} />
             </div>
             <div>
-              <div className="live-session-title">
+              <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-primary, #121217)' }}>
                 Active Wi-Fi Session
               </div>
-              <div className="live-session-timer">
+              <div style={{ fontSize: '12px', color: '#34A853', fontWeight: 700, marginTop: '2px' }}>
                 {countdownText} remaining
               </div>
             </div>
           </div>
+
           <button
-            className="live-session-btn"
             onClick={() => router.push(`/vouchers/status?code=${encodeURIComponent(activeVoucher.code)}`)}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '999px',
+              background: 'rgba(52, 168, 83, 0.12)',
+              color: '#34A853',
+              fontSize: '12px',
+              fontWeight: 800,
+              border: '1px solid rgba(52, 168, 83, 0.25)',
+              cursor: 'pointer',
+            }}
           >
             Session Info →
           </button>
         </div>
       )}
 
-      {/* ── Quick Action 4-Grid ── */}
-      <div className="quick-grid-4">
+      {/* ── Quick Action 4-Grid (Redesigned) ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '10px',
+        marginBottom: '26px',
+      }}>
+        {/* Quick Pass */}
         <div
-          className="quick-action-item"
           onClick={() => {
             if (plans.length > 0) handleOpenCheckout(plans[0]);
             else router.push('/packages');
           }}
+          style={{
+            background: 'var(--surface, #FFFFFF)',
+            borderRadius: '18px',
+            padding: '16px 8px 14px',
+            textAlign: 'center',
+            border: '1.5px solid var(--border-light, #ECEEF2)',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+            transition: 'all 0.15s ease',
+          }}
         >
-          <div className="quick-icon-box">
-            <ArrowUpRightIcon size={22} color="#121217" />
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '14px',
+            background: 'rgba(52, 168, 83, 0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 8px',
+          }}>
+            <ArrowUpRightIcon size={20} color="#34A853" />
           </div>
-          <span className="quick-label">Quick Pass</span>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary, #121217)', display: 'block' }}>
+            Quick Pass
+          </span>
         </div>
 
+        {/* All Passes */}
         <div
-          className="quick-action-item"
           onClick={() => router.push('/packages')}
+          style={{
+            background: 'var(--surface, #FFFFFF)',
+            borderRadius: '18px',
+            padding: '16px 8px 14px',
+            textAlign: 'center',
+            border: '1.5px solid var(--border-light, #ECEEF2)',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+            transition: 'all 0.15s ease',
+          }}
         >
-          <div className="quick-icon-box">
-            <WifiIcon size={22} color="#121217" />
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '14px',
+            background: 'rgba(16, 185, 129, 0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 8px',
+          }}>
+            <WifiIcon size={20} color="#10B981" />
           </div>
-          <span className="quick-label">All Passes</span>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary, #121217)', display: 'block' }}>
+            All Passes
+          </span>
         </div>
 
+        {/* Top Up */}
         <div
-          className="quick-action-item"
           onClick={() => router.push(user ? '/wallet' : '/auth')}
+          style={{
+            background: 'var(--surface, #FFFFFF)',
+            borderRadius: '18px',
+            padding: '16px 8px 14px',
+            textAlign: 'center',
+            border: '1.5px solid var(--border-light, #ECEEF2)',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+            transition: 'all 0.15s ease',
+          }}
         >
-          <div className="quick-icon-box">
-            <WalletIcon size={22} color="#121217" />
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '14px',
+            background: 'rgba(255, 184, 76, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 8px',
+          }}>
+            <WalletIcon size={20} color="#F59E0B" />
           </div>
-          <span className="quick-label">Top Up</span>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary, #121217)', display: 'block' }}>
+            Top Up
+          </span>
         </div>
 
+        {/* My Passes */}
         <div
-          className="quick-action-item"
           onClick={() => router.push(user ? '/vouchers' : '/auth')}
+          style={{
+            background: 'var(--surface, #FFFFFF)',
+            borderRadius: '18px',
+            padding: '16px 8px 14px',
+            textAlign: 'center',
+            border: '1.5px solid var(--border-light, #ECEEF2)',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+            transition: 'all 0.15s ease',
+          }}
         >
-          <div className="quick-icon-box">
-            <ShieldIcon size={22} color="#121217" />
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '14px',
+            background: 'rgba(99, 102, 241, 0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 8px',
+          }}>
+            <ShieldIcon size={20} color="#6366F1" />
           </div>
-          <span className="quick-label">My Passes</span>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary, #121217)', display: 'block' }}>
+            My Passes
+          </span>
         </div>
       </div>
 
       {/* ── Popular Passes Showcase ── */}
       {plans.length > 0 && (
-        <div className="featured-passes-section">
-          <div className="section-head">
-            <h2 className="section-title">Popular Passes</h2>
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '14px',
+          }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary, #121217)', margin: 0, letterSpacing: '-0.3px' }}>
+              Popular Passes
+            </h2>
             <span
-              className="section-view-all"
               onClick={() => router.push('/packages')}
-              style={{ color: '#34A853', fontWeight: 700 }}
+              style={{ color: '#34A853', fontWeight: 800, fontSize: '13px', cursor: 'pointer' }}
             >
               View All Passes →
             </span>
           </div>
-          <div className="featured-passes-grid">
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {plans.slice(0, 3).map((plan, idx) => (
-              <div key={plan.id || idx} className="featured-pass-card">
-                {idx === 0 && <span className="featured-pass-badge">Popular</span>}
-                <div>
-                  <div className="featured-pass-name">{plan.name}</div>
-                  <div className="featured-pass-duration">{plan.duration || 'Unlimited'}</div>
+              <div
+                key={plan.id || idx}
+                style={{
+                  background: 'var(--surface, #FFFFFF)',
+                  borderRadius: '20px',
+                  padding: '16px 18px',
+                  border: '1.5px solid var(--border-light, #ECEEF2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 3px 12px rgba(0,0,0,0.03)',
+                  position: 'relative',
+                }}
+              >
+                {idx === 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-9px',
+                    left: '18px',
+                    background: '#34A853',
+                    color: '#FFFFFF',
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    boxShadow: '0 2px 6px rgba(52, 168, 83, 0.4)',
+                  }}>
+                    Popular
+                  </span>
+                )}
+
+                <div style={{ marginTop: idx === 0 ? '4px' : '0' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary, #121217)' }}>
+                    {plan.name}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #8E8E93)', marginTop: '2px' }}>
+                    {plan.duration || 'Unlimited Fast Internet'}
+                  </div>
                 </div>
-                <div>
-                  <div className="featured-pass-price">{formatPrice(plan.price)}</div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#34A853' }}>
+                    {formatPrice(plan.price)}
+                  </div>
                   <button
-                    className="featured-pass-btn"
                     onClick={() => handleOpenCheckout(plan)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '999px',
+                      background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+                      color: '#FFFFFF',
+                      fontSize: '12.5px',
+                      fontWeight: 800,
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 3px 10px rgba(52, 168, 83, 0.3)',
+                    }}
                   >
                     Get Pass
                   </button>
@@ -606,8 +1036,15 @@ export default function HomePage() {
       {/* Click outside to close notification dropdown */}
       {notifOpen && (
         <div
-          className="notif-overlay"
           onClick={() => setNotifOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 900,
+          }}
         />
       )}
 

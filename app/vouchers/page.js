@@ -29,7 +29,7 @@ export default function VouchersPage() {
   const [toast, setToast] = useState('');
   const [networkInfo, setNetworkInfo] = useState({
     hotspot_url: 'asuktech.net',
-    wifi_ssid: 'African Network Wi-Fi',
+    wifi_ssid: 'My Collective Sub Wi-Fi',
   });
 
 
@@ -40,7 +40,7 @@ export default function VouchersPage() {
         if (d?.mikrotik) {
           setNetworkInfo({
             hotspot_url: d.mikrotik.hotspot_url || 'asuktech.net',
-            wifi_ssid: d.mikrotik.wifi_ssid || 'African Network Wi-Fi',
+            wifi_ssid: d.mikrotik.wifi_ssid || 'My Collective Sub Wi-Fi',
           });
         }
       })

@@ -91,7 +91,7 @@ export default function PwaInstallBanner() {
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>
-          Install African Network App
+          Install My Collective Sub App
         </div>
         <div style={{ fontSize: '11px', color: 'var(--text-muted, #94a3b8)', marginTop: '2px' }}>
           {isIos

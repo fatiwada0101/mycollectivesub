@@ -1,7 +1,7 @@
 export default function manifest() {
   return {
-    name: 'African Network Wi-Fi Hotspot',
-    short_name: 'African Network',
+    name: 'My Collective Sub Wi-Fi Hotspot',
+    short_name: 'My Collective Sub',
     description: 'Instant Wi-Fi hotspot passes, live session countdown tracker, and wallet manager.',
     start_url: '/',
     display: 'standalone',

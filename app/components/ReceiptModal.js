@@ -24,8 +24,8 @@ export default function ReceiptModal({
   onClose,
   type = 'pass', // 'pass' | 'transaction' | 'statement'
   data = {},
-  brandName = 'African Network Wi-Fi',
-  wifiSsid = 'African Network Wi-Fi',
+  brandName = 'My Collective Sub Wi-Fi',
+  wifiSsid = 'My Collective Sub Wi-Fi',
   hotspotUrl = 'asuktech.net',
 }) {
   const canvasContainerRef = useRef(null);
@@ -65,7 +65,7 @@ export default function ReceiptModal({
         hotspotUrl,
         planName: data.plan_name || data.profile_name || data.plan || 'Wi-Fi Access Pass',
         duration: data.duration || (data.limit_uptime_seconds ? `${Math.round(data.limit_uptime_seconds / 3600)} Hours` : 'Standard'),
-        voucherCode: data.voucher_code || data.code || 'AFRICAN-PASS',
+        voucherCode: data.voucher_code || data.code || 'MYCOLLECTIVESUB-PASS',
         price: data.price || data.amount || 0,
         paymentMethod: data.payment_method || 'Online Payment',
         createdAt: data.created_at || new Date().toISOString(),
@@ -119,13 +119,13 @@ export default function ReceiptModal({
   const getFilePrefix = () => {
     if (type === 'pass') {
       const code = data.voucher_code || data.code || 'pass';
-      return `AfricanNetwork-Pass-${code}`;
+      return `MyCollectiveSub-Pass-${code}`;
     }
     if (type === 'transaction') {
       const ref = data.flw_ref || data.id || 'receipt';
-      return `AfricanNetwork-Receipt-${ref}`;
+      return `MyCollectiveSub-Receipt-${ref}`;
     }
-    return `AfricanNetwork-Statement-${new Date().toISOString().slice(0, 10)}`;
+    return `MyCollectiveSub-Statement-${new Date().toISOString().slice(0, 10)}`;
   };
 
   const handleDownloadPdf = async () => {

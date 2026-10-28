@@ -138,7 +138,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
     has_fallback_vouchers: false,
     fallback_counts: {},
     hotspot_url: 'asuktech.net',
-    wifi_ssid: 'African Network Wi-Fi',
+    wifi_ssid: 'My Collective Sub Wi-Fi',
   });
 
   const walletBalance = wallet ? parseFloat(wallet.balance) : 0;
@@ -161,7 +161,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
             has_fallback_vouchers: !!d.mikrotik.has_fallback_vouchers,
             fallback_counts: d.mikrotik.fallback_counts || {},
             hotspot_url: d.mikrotik.hotspot_url || 'asuktech.net',
-            wifi_ssid: d.mikrotik.wifi_ssid || 'African Network Wi-Fi',
+            wifi_ssid: d.mikrotik.wifi_ssid || 'My Collective Sub Wi-Fi',
           });
         }
       })
@@ -740,7 +740,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
                   </div>
                   <div className="method-details">
                     <div className="method-title-row">
-                      <strong>African Network Wallet</strong>
+                      <strong>My Collective Sub Wallet</strong>
                       <span className="balance-pill">
                         Balance: {formatPrice(walletBalance)}
                       </span>
@@ -961,7 +961,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
               <div className="ticket-instructions">
                 <strong>Manual Login:</strong>
                 <ol>
-                  <li>Connect to Wi-Fi: <strong>{routerStatus.wifi_ssid || 'African Network Wi-Fi'}</strong></li>
+                  <li>Connect to Wi-Fi: <strong>{routerStatus.wifi_ssid || 'My Collective Sub Wi-Fi'}</strong></li>
                   <li>A login page will appear automatically</li>
                   <li>Enter code <strong>{voucherData.code}</strong> as both username & password</li>
                 </ol>

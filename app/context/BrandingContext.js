@@ -159,7 +159,7 @@ const THEME_PALETTES = {
 };
 
 const DEFAULT_BRANDING = {
-  app_name: 'African Network',
+  app_name: 'My Collective Sub',
   logo_url: '',
   theme: 'violet',
   app_url: '',

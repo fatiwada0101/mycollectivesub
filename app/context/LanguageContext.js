@@ -12,7 +12,7 @@ export const LANGUAGES = [
 
 export const TRANSLATIONS = {
   en: {
-    app_title: 'African Network Wi-Fi',
+    app_title: 'My Collective Sub Wi-Fi',
     buy_pass: 'Buy Data Pass',
     active_pass: 'Active Pass',
     no_active_pass: 'No active pass. Choose a package below.',
@@ -36,7 +36,7 @@ export const TRANSLATIONS = {
     connect: 'Connect Now',
   },
   pcm: {
-    app_title: 'African Network Wi-Fi',
+    app_title: 'My Collective Sub Wi-Fi',
     buy_pass: 'Buy Better Wi-Fi Pass',
     active_pass: 'Pass wey dey work',
     no_active_pass: 'You never get active pass. Pick one plan for down.',
@@ -60,7 +60,7 @@ export const TRANSLATIONS = {
     connect: 'Enter Internet Now',
   },
   yo: {
-    app_title: 'African Network Wi-Fi',
+    app_title: 'My Collective Sub Wi-Fi',
     buy_pass: 'Ra Data Wi-Fi',
     active_pass: 'Pass to n ṣiṣẹ lọwọ',
     no_active_pass: 'Ko si pass to n ṣiṣẹ. Yan eto kan ni isalẹ.',
@@ -84,7 +84,7 @@ export const TRANSLATIONS = {
     connect: 'Sopọ Bayi',
   },
   ha: {
-    app_title: 'African Network Wi-Fi',
+    app_title: 'My Collective Sub Wi-Fi',
     buy_pass: 'Sayi Fakitin Wi-Fi',
     active_pass: 'Pass mai aiki',
     no_active_pass: 'Babu pass mai aiki. Zabi tsari a kasa.',
@@ -108,7 +108,7 @@ export const TRANSLATIONS = {
     connect: 'Shiga Yanzu',
   },
   ig: {
-    app_title: 'African Network Wi-Fi',
+    app_title: 'My Collective Sub Wi-Fi',
     buy_pass: 'Gotee Data Wi-Fi',
     active_pass: 'Pass na-arụ ọrụ',
     no_active_pass: 'Onweghị pass na-arụ ọrụ. Họrọ atụmatụ n’okpuru.',

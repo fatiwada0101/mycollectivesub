@@ -40,7 +40,7 @@ function VoucherStatusContent() {
   const [toast, setToast] = useState('');
   const [networkInfo, setNetworkInfo] = useState({
     hotspot_url: 'asuktech.net',
-    wifi_ssid: 'African Network Wi-Fi',
+    wifi_ssid: 'My Collective Sub Wi-Fi',
   });
 
   // Fetch hotspot URL and Wi-Fi SSID
@@ -51,7 +51,7 @@ function VoucherStatusContent() {
         if (d?.mikrotik) {
           setNetworkInfo({
             hotspot_url: d.mikrotik.hotspot_url || 'asuktech.net',
-            wifi_ssid: d.mikrotik.wifi_ssid || 'African Network Wi-Fi',
+            wifi_ssid: d.mikrotik.wifi_ssid || 'My Collective Sub Wi-Fi',
           });
         }
       })

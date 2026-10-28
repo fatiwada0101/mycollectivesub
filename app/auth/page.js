@@ -114,125 +114,269 @@ export default function AuthPage() {
     const balance = wallet ? parseFloat(wallet.balance) : 0;
 
     return (
-      <div className="app-shell">
+      <div className="app-shell" style={{ paddingBottom: '90px' }}>
         {/* Topbar */}
-        <div className="screen-topbar">
+        <div className="screen-topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <button
             className="circle-icon-btn"
             onClick={() => router.push('/')}
             aria-label="Back to home"
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'var(--surface, #FFFFFF)',
+              border: '1px solid var(--border-light, #EAECEF)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            }}
           >
-            <ChevronLeftIcon size={20} color="#121217" />
+            <ChevronLeftIcon size={20} color="var(--text-primary, #121217)" />
           </button>
 
-          <h1 className="screen-title">My Account</h1>
+          <h1 className="screen-title" style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: 'var(--text-primary, #121217)' }}>
+            My Account
+          </h1>
 
-        <div style={{ width: '40px' }} />
-      </div>
+          <div style={{ width: '42px' }} />
+        </div>
 
-        {/* Profile Card */}
-        <div className="profile-hero-card">
-          <div className="profile-avatar-large">{initial}</div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
+        {/* Profile Hero Card */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(52, 168, 83, 0.08) 0%, rgba(20, 24, 28, 0.03) 100%)',
+          border: '1.5px solid rgba(52, 168, 83, 0.2)',
+          borderRadius: '26px',
+          padding: '28px 20px',
+          textAlign: 'center',
+          marginBottom: '20px',
+          position: 'relative',
+          overflow: 'hidden',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.04)',
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: '-50px',
+            right: '-50px',
+            width: '120px',
+            height: '120px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(52, 168, 83, 0.2) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
+
+          <div style={{
+            width: '74px',
+            height: '74px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+            color: '#FFFFFF',
+            fontSize: '28px',
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 14px',
+            boxShadow: '0 8px 24px rgba(52, 168, 83, 0.35)',
+            border: '3px solid #FFFFFF',
+          }}>
+            {initial}
+          </div>
+
+          <h2 style={{ fontSize: '21px', fontWeight: 800, color: 'var(--text-primary, #121217)', margin: '0 0 4px', letterSpacing: '-0.3px' }}>
             {displayName}
           </h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted, #8E8E93)', margin: '0 0 12px' }}>
             {user.email}
           </p>
-          <div style={{ marginTop: '10px' }}>
-            <span
-              style={{
-                display: 'inline-block',
-                padding: '4px 12px',
-                borderRadius: '999px',
-                background: 'rgba(52, 168, 83, 0.12)',
-                color: '#34A853',
-                fontSize: '12px',
-                fontWeight: 700,
-              }}
-            >
-              ● Verified Customer
-            </span>
+
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '999px', background: 'rgba(52, 168, 83, 0.12)', border: '1px solid rgba(52, 168, 83, 0.3)', color: '#34A853', fontSize: '12px', fontWeight: 700 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34A853', boxShadow: '0 0 8px #34A853' }} />
+            Verified Customer
           </div>
         </div>
 
-        {/* Wallet & Stats Strip */}
-        <div className="profile-stats-grid">
-          <div className="profile-stat-box">
-            <span className="stat-label">Wallet Balance</span>
-            <div className="stat-value">{formatPrice(balance)}</div>
+        {/* Wallet & Passes Stats Strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+          <div style={{
+            background: 'var(--surface, #FFFFFF)',
+            border: '1.5px solid var(--border-light, #EAECEF)',
+            borderRadius: '20px',
+            padding: '18px 16px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}>
+            <div>
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted, #8E8E93)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Wallet Balance
+              </span>
+              <div style={{ fontSize: '19px', fontWeight: 800, color: 'var(--text-primary, #121217)', marginTop: '4px' }}>
+                {formatPrice(balance)}
+              </div>
+            </div>
             <button
               onClick={() => router.push('/wallet')}
               style={{
-                marginTop: '8px',
-                fontSize: '12px',
-                fontWeight: 700,
+                marginTop: '12px',
+                fontSize: '12.5px',
+                fontWeight: 800,
                 color: '#34A853',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                background: 'none',
+                background: 'rgba(52, 168, 83, 0.1)',
                 border: 'none',
+                padding: '6px 12px',
+                borderRadius: '999px',
                 cursor: 'pointer',
+                width: 'fit-content',
               }}
             >
-              Top-Up Funds ↗
+              Top Up ↗
             </button>
           </div>
 
-          <div className="profile-stat-box">
-            <span className="stat-label">Wi-Fi Passes</span>
-            <div className="stat-value">Active</div>
+          <div style={{
+            background: 'var(--surface, #FFFFFF)',
+            border: '1.5px solid var(--border-light, #EAECEF)',
+            borderRadius: '20px',
+            padding: '18px 16px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}>
+            <div>
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted, #8E8E93)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Wi-Fi Passes
+              </span>
+              <div style={{ fontSize: '19px', fontWeight: 800, color: '#34A853', marginTop: '4px' }}>
+                Active
+              </div>
+            </div>
             <button
               onClick={() => router.push('/packages')}
               style={{
-                marginTop: '8px',
-                fontSize: '12px',
-                fontWeight: 700,
+                marginTop: '12px',
+                fontSize: '12.5px',
+                fontWeight: 800,
                 color: '#34A853',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                background: 'none',
+                background: 'rgba(52, 168, 83, 0.1)',
                 border: 'none',
+                padding: '6px 12px',
+                borderRadius: '999px',
                 cursor: 'pointer',
+                width: 'fit-content',
               }}
             >
-              View Passes ↗
+              Buy Pass ↗
             </button>
           </div>
         </div>
 
-        {/* Quick Menu Links */}
-        <div className="profile-menu-card">
-          <div className="profile-menu-item" onClick={() => router.push('/wallet')}>
-            <div className="profile-menu-left">
-              <div className="profile-menu-icon">
+        {/* Navigation Menu Links */}
+        <div style={{
+          background: 'var(--surface, #FFFFFF)',
+          borderRadius: '22px',
+          border: '1.5px solid var(--border-light, #EAECEF)',
+          overflow: 'hidden',
+          marginBottom: '20px',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+        }}>
+          <div
+            onClick={() => router.push('/wallet')}
+            style={{
+              padding: '16px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid var(--border-light, #EAECEF)',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: 'rgba(52, 168, 83, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
                 <WalletIcon size={18} color="#34A853" />
               </div>
-              <span>Wallet & Transactions</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary, #121217)' }}>
+                Wallet &amp; Transactions
+              </span>
             </div>
-            <ArrowUpRightIcon size={16} color="#8E8E93" />
+            <ArrowUpRightIcon size={16} color="var(--text-muted, #8E8E93)" />
           </div>
 
-          <div className="profile-menu-item" onClick={() => router.push('/packages')}>
-            <div className="profile-menu-left">
-              <div className="profile-menu-icon">
+          <div
+            onClick={() => router.push('/packages')}
+            style={{
+              padding: '16px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid var(--border-light, #EAECEF)',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
                 <WifiIcon size={18} color="#10B981" />
               </div>
-              <span>Buy Wi-Fi Passes</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary, #121217)' }}>
+                Buy Wi-Fi Passes
+              </span>
             </div>
-            <ArrowUpRightIcon size={16} color="#8E8E93" />
+            <ArrowUpRightIcon size={16} color="var(--text-muted, #8E8E93)" />
           </div>
 
-          <div className="profile-menu-item" onClick={() => router.push('/analytics')}>
-            <div className="profile-menu-left">
-              <div className="profile-menu-icon">
+          <div
+            onClick={() => router.push('/analytics')}
+            style={{
+              padding: '16px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: 'rgba(255, 184, 76, 0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
                 <ShieldIcon size={18} color="#FFB84C" />
               </div>
-              <span>Usage Analytics</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary, #121217)' }}>
+                Usage Analytics
+              </span>
             </div>
-            <ArrowUpRightIcon size={16} color="#8E8E93" />
+            <ArrowUpRightIcon size={16} color="var(--text-muted, #8E8E93)" />
           </div>
         </div>
 
@@ -241,8 +385,8 @@ export default function AuthPage() {
           onClick={handleSignOut}
           style={{
             width: '100%',
-            padding: '14px',
-            background: '#FFFFFF',
+            padding: '15px',
+            background: 'var(--surface, #FFFFFF)',
             border: '1.5px solid #FEE2E2',
             borderRadius: '999px',
             color: '#EF4444',
@@ -253,7 +397,7 @@ export default function AuthPage() {
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            boxShadow: 'var(--shadow-subtle)',
+            boxShadow: '0 2px 10px rgba(239, 68, 68, 0.06)',
             transition: 'all 0.15s ease',
           }}
         >
@@ -266,62 +410,154 @@ export default function AuthPage() {
     );
   }
 
-  // ── Logged Out: Sign In & Sign Up Form ──
+  // ── Logged Out: Modern User Sign In & Sign Up Form ──
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ paddingBottom: '40px' }}>
       {/* Top Bar */}
-      <div className="screen-topbar">
+      <div className="screen-topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
         <button
           className="circle-icon-btn"
           onClick={() => router.push('/')}
           aria-label="Back to home"
+          style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '50%',
+            background: 'var(--surface, #FFFFFF)',
+            border: '1px solid var(--border-light, #EAECEF)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}
         >
-          <ChevronLeftIcon size={20} color="#121217" />
+          <ChevronLeftIcon size={20} color="var(--text-primary, #121217)" />
         </button>
 
-        <h1 className="screen-title">{isLogin ? 'Sign In' : 'Create Account'}</h1>
+        <h1 className="screen-title" style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: 'var(--text-primary, #121217)' }}>
+          {isLogin ? 'Sign In' : 'Create Account'}
+        </h1>
 
-        <div style={{ width: '40px' }} />
+        <div style={{ width: '42px' }} />
       </div>
 
-      {/* Capsule Segmented Toggle */}
-      <div className="capsule-toggle-wrap">
-        <div className="capsule-toggle">
-          <button
-            type="button"
-            className={`capsule-btn ${isLogin ? 'active' : ''}`}
-            onClick={() => {
-              setIsLogin(true);
-              setError('');
-              setSuccess('');
-            }}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            className={`capsule-btn ${!isLogin ? 'active' : ''}`}
-            onClick={() => {
-              setIsLogin(false);
-              setError('');
-              setSuccess('');
-            }}
-          >
-            Sign Up
-          </button>
-        </div>
+      {/* Modern Capsule Segmented Toggle */}
+      <div style={{
+        background: 'rgba(0, 0, 0, 0.05)',
+        padding: '5px',
+        borderRadius: '999px',
+        display: 'flex',
+        gap: '4px',
+        marginBottom: '20px',
+        border: '1px solid var(--border-subtle, rgba(0,0,0,0.04))',
+      }}>
+        <button
+          type="button"
+          onClick={() => {
+            setIsLogin(true);
+            setForgotMode(false);
+            setError('');
+            setSuccess('');
+          }}
+          style={{
+            flex: 1,
+            padding: '11px',
+            borderRadius: '999px',
+            border: 'none',
+            fontSize: '13.5px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            background: isLogin ? 'var(--surface, #FFFFFF)' : 'transparent',
+            color: isLogin ? 'var(--text-primary, #121217)' : 'var(--text-muted, #8E8E93)',
+            boxShadow: isLogin ? '0 3px 10px rgba(0,0,0,0.06)' : 'none',
+          }}
+        >
+          Sign In
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setIsLogin(false);
+            setForgotMode(false);
+            setError('');
+            setSuccess('');
+          }}
+          style={{
+            flex: 1,
+            padding: '11px',
+            borderRadius: '999px',
+            border: 'none',
+            fontSize: '13.5px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            background: !isLogin ? 'var(--surface, #FFFFFF)' : 'transparent',
+            color: !isLogin ? 'var(--text-primary, #121217)' : 'var(--text-muted, #8E8E93)',
+            boxShadow: !isLogin ? '0 3px 10px rgba(0,0,0,0.06)' : 'none',
+          }}
+        >
+          Sign Up
+        </button>
       </div>
 
-      {/* Brand Auth Card */}
-      <div className="auth-card">
-        <div className="auth-logo-badge">
+      {/* Modern Branded Auth Card */}
+      <div style={{
+        background: 'var(--surface, #FFFFFF)',
+        borderRadius: '26px',
+        padding: '28px 22px 24px',
+        border: '1.5px solid var(--border-light, #EAECEF)',
+        boxShadow: '0 16px 40px rgba(0,0,0,0.05)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Glow Accent */}
+        <div style={{
+          position: 'absolute',
+          top: '-40px',
+          right: '-40px',
+          width: '100px',
+          height: '100px',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(52, 168, 83, 0.18) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        {/* Brand Icon Badge */}
+        <div style={{
+          width: '58px',
+          height: '58px',
+          borderRadius: '18px',
+          background: 'linear-gradient(135deg, rgba(52, 168, 83, 0.15) 0%, rgba(45, 146, 73, 0.05) 100%)',
+          border: '1.5px solid rgba(52, 168, 83, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 16px',
+          boxShadow: '0 8px 20px rgba(52, 168, 83, 0.18)',
+        }}>
           <WifiIcon size={26} color="#34A853" />
         </div>
 
-        <h2 className="auth-title">
-          {forgotMode ? 'Reset Password' : isLogin ? 'Welcome Back' : `Join ${appName || 'African Network'}`}
+        <h2 style={{
+          fontSize: '22px',
+          fontWeight: 800,
+          textAlign: 'center',
+          color: 'var(--text-primary, #121217)',
+          letterSpacing: '-0.4px',
+          margin: '0 0 4px',
+        }}>
+          {forgotMode ? 'Reset Password' : isLogin ? 'Welcome Back' : `Join ${appName || 'My Collective Sub'}`}
         </h2>
-        <p className="auth-subtitle">
+
+        <p style={{
+          fontSize: '13px',
+          color: 'var(--text-muted, #8E8E93)',
+          textAlign: 'center',
+          margin: '0 0 20px',
+          fontWeight: 500,
+        }}>
           {forgotMode
             ? 'Enter your email to receive a password reset link'
             : isLogin
@@ -329,15 +565,56 @@ export default function AuthPage() {
             : 'Register to manage your wallet and Wi-Fi passes'}
         </p>
 
-        {error && <div className="auth-toast-error">{error}</div>}
-        {success && <div className="auth-toast-success">{success}</div>}
+        {error && (
+          <div style={{
+            padding: '12px 14px',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '14px',
+            color: '#DC2626',
+            fontSize: '12.5px',
+            fontWeight: 600,
+            marginBottom: '16px',
+            textAlign: 'center',
+            lineHeight: 1.4,
+          }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {success && (
+          <div style={{
+            padding: '12px 14px',
+            background: 'rgba(52, 168, 83, 0.1)',
+            border: '1px solid rgba(52, 168, 83, 0.35)',
+            borderRadius: '14px',
+            color: '#166534',
+            fontSize: '12.5px',
+            fontWeight: 600,
+            marginBottom: '16px',
+            textAlign: 'center',
+            lineHeight: 1.4,
+          }}>
+            ✓ {success}
+          </div>
+        )}
 
         {forgotMode ? (
           <>
             <form onSubmit={handleForgotPassword}>
-              <div className="auth-field">
-                <label className="auth-field-label">Email Address</label>
-                <div className="auth-input-box">
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#4A4A52', marginBottom: '6px' }}>
+                  Email Address
+                </label>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'var(--bg, #F4F5F8)',
+                  border: '1.5px solid var(--border-light, #ECEEF2)',
+                  borderRadius: '16px',
+                  padding: '13px 15px',
+                }}>
                   <MailIcon size={18} color="#8E8E93" />
                   <input
                     type="email"
@@ -347,11 +624,36 @@ export default function AuthPage() {
                     required
                     autoComplete="email"
                     autoFocus
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      fontSize: '14px',
+                      color: 'var(--text-primary, #121217)',
+                      fontWeight: 600,
+                    }}
                   />
                 </div>
               </div>
 
-              <button type="submit" className="auth-submit-btn" disabled={loading}>
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  padding: '15px',
+                  background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '16px',
+                  fontSize: '14.5px',
+                  fontWeight: 800,
+                  cursor: loading ? 'wait' : 'pointer',
+                  boxShadow: '0 6px 20px rgba(52, 168, 83, 0.35)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
                 {loading ? 'Sending Reset Link...' : 'Send Password Reset Email'}
               </button>
             </form>
@@ -378,181 +680,261 @@ export default function AuthPage() {
             </div>
           </>
         ) : (
-        <>
+          <>
+            <form onSubmit={handleSubmit}>
+              {!isLogin && (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#4A4A52', marginBottom: '6px' }}>
+                    Full Name
+                  </label>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    background: 'var(--bg, #F4F5F8)',
+                    border: '1.5px solid var(--border-light, #ECEEF2)',
+                    borderRadius: '16px',
+                    padding: '13px 15px',
+                  }}>
+                    <UserIcon size={18} color="#8E8E93" />
+                    <input
+                      type="text"
+                      placeholder="e.g. Muminul Hoque"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required={!isLogin}
+                      autoComplete="name"
+                      style={{
+                        flex: 1,
+                        background: 'transparent',
+                        border: 'none',
+                        outline: 'none',
+                        fontSize: '14px',
+                        color: 'var(--text-primary, #121217)',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
 
-        <form onSubmit={handleSubmit}>
-          {!isLogin && (
-            <div className="auth-field">
-              <label className="auth-field-label">Full Name</label>
-              <div className="auth-input-box">
-                <UserIcon size={18} color="#8E8E93" />
-                <input
-                  type="text"
-                  placeholder="e.g. Muminul Hoque"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required={!isLogin}
-                  autoComplete="name"
-                />
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#4A4A52', marginBottom: '6px' }}>
+                  Email Address
+                </label>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'var(--bg, #F4F5F8)',
+                  border: '1.5px solid var(--border-light, #ECEEF2)',
+                  borderRadius: '16px',
+                  padding: '13px 15px',
+                }}>
+                  <MailIcon size={18} color="#8E8E93" />
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      fontSize: '14px',
+                      color: 'var(--text-primary, #121217)',
+                      fontWeight: 600,
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          )}
 
-          <div className="auth-field">
-            <label className="auth-field-label">Email Address</label>
-            <div className="auth-input-box">
-              <MailIcon size={18} color="#8E8E93" />
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </div>
-          </div>
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#4A4A52', marginBottom: '6px' }}>
+                  Password
+                </label>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'var(--bg, #F4F5F8)',
+                  border: '1.5px solid var(--border-light, #ECEEF2)',
+                  borderRadius: '16px',
+                  padding: '13px 15px',
+                }}>
+                  <LockIcon size={18} color="#8E8E93" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    autoComplete={isLogin ? 'current-password' : 'new-password'}
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      fontSize: '14px',
+                      color: 'var(--text-primary, #121217)',
+                      fontWeight: 600,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {showPassword ? (
+                      <EyeOffIcon size={18} color="#8E8E93" />
+                    ) : (
+                      <EyeIcon size={18} color="#8E8E93" />
+                    )}
+                  </button>
+                </div>
+              </div>
 
-          <div className="auth-field">
-            <label className="auth-field-label">Password</label>
-            <div className="auth-input-box">
-              <LockIcon size={18} color="#8E8E93" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                autoComplete={isLogin ? 'current-password' : 'new-password'}
-              />
               <button
-                type="button"
-                className="auth-eye-btn"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  padding: '15px',
+                  background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '16px',
+                  fontSize: '14.5px',
+                  fontWeight: 800,
+                  cursor: loading ? 'wait' : 'pointer',
+                  boxShadow: '0 6px 20px rgba(52, 168, 83, 0.35)',
+                  transition: 'all 0.2s ease',
+                }}
               >
-                {showPassword ? (
-                  <EyeOffIcon size={18} color="#8E8E93" />
+                {loading ? (
+                  <span>Authenticating...</span>
                 ) : (
-                  <EyeIcon size={18} color="#8E8E93" />
+                  <span>{isLogin ? 'Sign In to Account' : 'Create Free Account'}</span>
                 )}
               </button>
-            </div>
-          </div>
 
-          <button type="submit" className="auth-submit-btn" disabled={loading}>
-            {loading ? (
-              <span>Authenticating...</span>
-            ) : (
-              <span>{isLogin ? 'Sign In to Account' : 'Create Free Account'}</span>
-            )}
-          </button>
+              {isLogin && (
+                <div style={{ textAlign: 'center', marginTop: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotMode(true);
+                      setResetEmail(email);
+                      setError('');
+                      setSuccess('');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#34A853',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
+            </form>
 
-          {isLogin && (
-            <div style={{ textAlign: 'center', marginTop: '12px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setForgotMode(true);
-                  setResetEmail(email);
-                  setError('');
-                  setSuccess('');
-                }}
+            {/* Wholesale / Reseller Agent Banner */}
+            <div style={{
+              marginTop: '22px',
+              padding: '14px 16px',
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, rgba(52, 168, 83, 0.08) 0%, rgba(52, 168, 83, 0.02) 100%)',
+              border: '1px solid rgba(52, 168, 83, 0.2)',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-primary, #121217)', fontWeight: 800 }}>
+                💼 Want to sell Wi-Fi passes &amp; earn profit?
+              </div>
+              <p style={{ fontSize: '11.5px', color: 'var(--text-muted, #8E8E93)', margin: '4px 0 10px' }}>
+                Join our wholesale Agent Network with discounted bulk rates.
+              </p>
+              <Link
+                href="/reseller/signup"
                 style={{
-                  background: 'none',
-                  border: 'none',
+                  display: 'inline-block',
+                  padding: '7px 16px',
+                  borderRadius: '999px',
+                  background: '#34A853',
+                  color: '#FFFFFF',
+                  fontSize: '11.5px',
+                  fontWeight: 800,
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 12px rgba(52, 168, 83, 0.25)',
+                }}
+              >
+                Apply as a Reseller Agent →
+              </Link>
+            </div>
+
+            {/* Switch Mode Toggle */}
+            <div style={{
+              textAlign: 'center',
+              marginTop: '18px',
+              fontSize: '13px',
+              color: 'var(--text-muted, #8E8E93)',
+            }}>
+              {isLogin ? "Don't have an account yet? " : 'Already registered? '}
+              <span
+                style={{
                   color: '#34A853',
-                  fontSize: '13px',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   cursor: 'pointer',
                   textDecoration: 'underline',
                 }}
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError('');
+                  setSuccess('');
+                }}
               >
-                Forgot Password?
+                {isLogin ? 'Sign Up' : 'Sign In'}
+              </span>
+            </div>
+
+            {/* Frictionless Continue as Guest */}
+            <div style={{ textAlign: 'center', marginTop: '14px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.setItem('asuk_guest_session', 'true');
+                  router.push('/');
+                }}
+                style={{
+                  fontSize: '13px',
+                  color: 'var(--text-muted, #8E8E93)',
+                  fontWeight: 600,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '6px 12px',
+                }}
+              >
+                ← Continue as Guest
               </button>
             </div>
-          )}
-        </form>
-
-        <div style={{
-          marginTop: '20px',
-          padding: '14px',
-          borderRadius: '12px',
-          background: 'rgba(52, 168, 83, 0.08)',
-          border: '1px solid rgba(52, 168, 83, 0.2)',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-            💼 Want to sell Wi-Fi passes & earn profit?
-          </div>
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 8px' }}>
-            Join our wholesale Agent Network with discounted bulk rates.
-          </p>
-          <Link
-            href="/reseller/signup"
-            style={{
-              display: 'inline-block',
-              padding: '6px 14px',
-              borderRadius: '8px',
-              background: '#34A853',
-              color: '#fff',
-              fontSize: '11px',
-              fontWeight: 700,
-              textDecoration: 'none'
-            }}
-          >
-            Apply as a Reseller Agent →
-          </Link>
-        </div>
-
-        <div
-          style={{
-            textAlign: 'center',
-            marginTop: '18px',
-            fontSize: '13px',
-            color: 'var(--text-muted)',
-          }}
-        >
-          {isLogin ? "Don't have an account yet? " : 'Already registered? '}
-          <span
-            style={{
-              color: '#34A853',
-              fontWeight: 800,
-              cursor: 'pointer',
-              textDecoration: 'underline',
-            }}
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError('');
-              setSuccess('');
-            }}
-          >
-            {isLogin ? 'Sign Up' : 'Sign In'}
-          </span>
-        </div>
-
-        <div style={{ textAlign: 'center', marginTop: '14px' }}>
-          <button
-            type="button"
-            onClick={() => {
-              localStorage.setItem('asuk_guest_session', 'true');
-              router.push('/');
-            }}
-            style={{
-              fontSize: '13px',
-              color: 'var(--text-muted)',
-              fontWeight: 600,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '6px 12px',
-            }}
-          >
-            ← Continue as Guest
-          </button>
-        </div>
-        </>
+          </>
         )}
       </div>
     </div>

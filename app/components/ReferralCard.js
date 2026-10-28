@@ -54,7 +54,7 @@ export default function ReferralCard() {
       </div>
 
       <p style={{ fontSize: '12px', color: 'var(--text-secondary, #71717a)', margin: '0 0 14px', lineHeight: '1.4' }}>
-        Invite friends to surf on African Network Wi-Fi. When they make their first purchase, you get ₦50 automatically deposited into your wallet!
+        Invite friends to surf on My Collective Sub Wi-Fi. When they make their first purchase, you get ₦50 automatically deposited into your wallet!
       </p>
 
       {/* Code strip & copy button */}

@@ -278,7 +278,7 @@ function WalletContent() {
         currency: 'NGN',
         reference: paymentRef,
         customerFullName: displayName,
-        customerEmail: user?.email || 'customer@africannetwork.com',
+        customerEmail: user?.email || 'customer@mycollectivesub.com',
         apiKey: order.apiKey,
         contractCode: order.contractCode,
         paymentDescription: `${appName} Wallet Deposit - ${formatPrice(depositNum)}`,
@@ -332,7 +332,7 @@ function WalletContent() {
       // The wallet page re-fetches the balance on mount, so the deposit will reflect automatically.
       redirect_url: `${window.location.origin}/wallet?deposit=success`,
       customer: {
-        email: user?.email || 'customer@africannetwork.com',
+        email: user?.email || 'customer@mycollectivesub.com',
         phone_number: user?.user_metadata?.phone || '08000000000',
         name: displayName,
       },

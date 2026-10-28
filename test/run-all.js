@@ -116,7 +116,9 @@ async function runMasterSuite() {
   });
 
   await test('2.4: Staging Environment Isolation Docs', () => {
-    const stagingDoc = path.resolve('../docs/production-roadmap/phase-2-ux/2.4-environment-separation.md');
+    const stagingDoc = fs.existsSync(path.resolve('../docs/production-roadmap/phase-2-ux/2.4-environment-separation.md'))
+      ? path.resolve('../docs/production-roadmap/phase-2-ux/2.4-environment-separation.md')
+      : path.resolve('docs/production-roadmap/phase-2-ux/2.4-environment-separation.md');
     assert(fs.existsSync(stagingDoc), '2.4-environment-separation.md must exist');
   });
 

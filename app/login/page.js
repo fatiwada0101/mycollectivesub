@@ -358,7 +358,7 @@ function CaptiveLoginPage() {
                 type="text"
                 value={code}
                 onChange={e => setCode(e.target.value.toUpperCase())}
-                placeholder="AFRICAN-XXXX"
+                placeholder="MYCOLLECTIVESUB-XXXX"
                 autoFocus
                 autoComplete="off"
                 style={{
