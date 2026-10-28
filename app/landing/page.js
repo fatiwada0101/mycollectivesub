@@ -102,26 +102,14 @@ export default function LandingPage() {
             >
               <WifiIcon size={20} color="#FFFFFF" />
             </div>
-            <div>
-              <div
-                style={{
-                  fontSize: '16px',
-                  fontWeight: 800,
-                  color: '#0F172A',
-                  lineHeight: 1.1,
-                }}
-              >
-                My Collective Sub
-              </div>
-              <div
-                style={{
-                  fontSize: '11px',
-                  color: '#16A34A',
-                  fontWeight: 700,
-                }}
-              >
-                Wi-Fi Katsina
-              </div>
+            <div
+              style={{
+                fontSize: '16px',
+                fontWeight: 800,
+                color: '#0F172A',
+              }}
+            >
+              My Collective Sub
             </div>
           </Link>
 
