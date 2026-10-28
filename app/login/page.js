@@ -11,7 +11,7 @@ import { useBranding } from '../context/BrandingContext';
  */
 export default function CaptiveLoginWrapper() {
   return (
-    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#0a0a0a' }} />}>
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#F8FAFC' }} />}>
       <CaptiveLoginPage />
     </Suspense>
   );
@@ -256,20 +256,18 @@ function CaptiveLoginPage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'radial-gradient(ellipse at 50% 0%, rgba(52, 168, 83, 0.18) 0%, #0d0f12 55%, #08090a 100%)',
+      background: '#F8FAFC',
       fontFamily: "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif",
       padding: '24px 20px',
     }}>
       <div style={{
         width: '100%',
         maxWidth: 420,
-        background: 'rgba(20, 24, 28, 0.82)',
-        backdropFilter: 'blur(28px)',
-        WebkitBackdropFilter: 'blur(28px)',
-        borderRadius: 26,
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        padding: '38px 28px 30px',
-        boxShadow: '0 24px 64px rgba(0, 0, 0, 0.6), 0 0 32px rgba(52, 168, 83, 0.14)',
+        background: '#FFFFFF',
+        borderRadius: 24,
+        border: '1px solid #E2E8F0',
+        padding: '36px 28px 30px',
+        boxShadow: '0 10px 30px -4px rgba(0, 0, 0, 0.06), 0 4px 12px -2px rgba(0, 0, 0, 0.03)',
       }}>
         {/* Logo & Title */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
@@ -288,12 +286,12 @@ function CaptiveLoginPage() {
             </div>
           )}
           <h1 style={{
-            color: '#FFFFFF', fontSize: '23px', fontWeight: 800, margin: '0 0 6px',
+            color: '#0F172A', fontSize: '23px', fontWeight: 800, margin: '0 0 6px',
             letterSpacing: '-0.4px',
           }}>
             {appName || 'Wi-Fi Login Portal'}
           </h1>
-          <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '13.5px', margin: 0 }}>
+          <p style={{ color: '#64748B', fontSize: '13.5px', margin: 0 }}>
             {wifiSsid ? `Connected to ${wifiSsid}` : 'Enter your voucher code to connect'}
           </p>
         </div>
@@ -349,7 +347,7 @@ function CaptiveLoginPage() {
           <form onSubmit={handleLogin}>
             <div style={{ marginBottom: 20 }}>
               <label style={{
-                display: 'block', color: 'rgba(255, 255, 255, 0.7)', fontSize: '11.5px',
+                display: 'block', color: '#475569', fontSize: '11.5px',
                 fontWeight: 800, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.8px',
               }}>
                 Voucher Code
@@ -363,18 +361,18 @@ function CaptiveLoginPage() {
                 autoComplete="off"
                 style={{
                   width: '100%', padding: '16px 18px', fontSize: '19px', fontWeight: 800,
-                  background: 'rgba(255, 255, 255, 0.07)', border: '1.5px solid rgba(255, 255, 255, 0.16)',
-                  borderRadius: 16, color: '#FFFFFF', outline: 'none', textAlign: 'center',
+                  background: '#F8FAFC', border: '1.5px solid #CBD5E1',
+                  borderRadius: 14, color: '#0F172A', outline: 'none', textAlign: 'center',
                   letterSpacing: '2.5px', fontFamily: "'JetBrains Mono', monospace",
                   transition: 'all 0.2s ease',
                   boxSizing: 'border-box',
                 }}
                 onFocus={e => {
-                  e.target.style.borderColor = '#34A853';
-                  e.target.style.boxShadow = '0 0 0 4px rgba(52, 168, 83, 0.2)';
+                  e.target.style.borderColor = '#16A34A';
+                  e.target.style.boxShadow = '0 0 0 4px rgba(22, 163, 74, 0.15)';
                 }}
                 onBlur={e => {
-                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.16)';
+                  e.target.style.borderColor = '#CBD5E1';
                   e.target.style.boxShadow = 'none';
                 }}
               />
@@ -396,10 +394,10 @@ function CaptiveLoginPage() {
               disabled={loading || !code.trim()}
               style={{
                 width: '100%', padding: '16px', fontSize: '15px', fontWeight: 800,
-                background: loading ? '#333' : 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
-                color: '#FFFFFF', border: 'none', borderRadius: 16, cursor: loading ? 'wait' : 'pointer',
+                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)',
+                color: '#FFFFFF', border: 'none', borderRadius: 14, cursor: loading ? 'wait' : 'pointer',
                 letterSpacing: '0.3px',
-                boxShadow: loading ? 'none' : '0 6px 24px rgba(52, 168, 83, 0.42)',
+                boxShadow: loading ? 'none' : '0 4px 14px rgba(22, 163, 74, 0.35)',
                 transition: 'all 0.2s ease',
               }}
             >
@@ -411,19 +409,19 @@ function CaptiveLoginPage() {
         {/* Buy Voucher Link */}
         <div style={{
           textAlign: 'center', marginTop: 22, paddingTop: 18,
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          borderTop: '1px solid #E2E8F0',
         }}>
-          <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '12.5px', margin: '0 0 10px' }}>
+          <p style={{ color: '#64748B', fontSize: '12.5px', margin: '0 0 10px' }}>
             {"Don't have an active voucher?"}
           </p>
           <a
             href={buyPackageUrl}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              color: '#34A853', fontSize: '13.5px', fontWeight: 800,
+              color: '#15803D', fontSize: '13.5px', fontWeight: 800,
               textDecoration: 'none', padding: '10px 18px',
-              background: 'rgba(52, 168, 83, 0.12)', borderRadius: 12,
-              border: '1px solid rgba(52, 168, 83, 0.25)',
+              background: '#DCFCE7', borderRadius: 12,
+              border: '1px solid #BBF7D0',
               transition: 'all 0.2s ease',
             }}
           >
@@ -434,14 +432,14 @@ function CaptiveLoginPage() {
         {/* Device & Network Details */}
         <div style={{
           marginTop: 18, padding: '10px 14px',
-          background: 'rgba(255, 255, 255, 0.03)', borderRadius: 12,
-          fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)', textAlign: 'center',
-          lineHeight: 1.6, border: '1px solid rgba(255, 255, 255, 0.05)',
+          background: '#F1F5F9', borderRadius: 12,
+          fontSize: '11px', color: '#64748B', textAlign: 'center',
+          lineHeight: 1.6, border: '1px solid #E2E8F0',
         }}>
-          {mac && <span>MAC: <strong style={{ color: 'rgba(255, 255, 255, 0.7)' }}>{mac}</strong> </span>}
+          {mac && <span>MAC: <strong style={{ color: '#0F172A' }}>{mac}</strong> </span>}
           {mac && ip && <span>• </span>}
-          {ip && <span>IP: <strong style={{ color: 'rgba(255, 255, 255, 0.7)' }}>{ip}</strong> </span>}
-          <div>Portal: <strong style={{ color: 'rgba(255, 255, 255, 0.7)' }}>{hotspotUrl || '10.0.0.1'}</strong></div>
+          {ip && <span>IP: <strong style={{ color: '#0F172A' }}>{ip}</strong> </span>}
+          <div>Portal: <strong style={{ color: '#0F172A' }}>{hotspotUrl || '10.0.0.1'}</strong></div>
         </div>
       </div>
     </div>

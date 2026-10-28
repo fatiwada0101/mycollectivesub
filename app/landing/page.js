@@ -128,24 +128,9 @@ export default function LandingPage() {
           {/* Quick Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Link
-              href="/login"
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: '1px solid #CBD5E1',
-                background: '#FFFFFF',
-                color: '#334155',
-                fontSize: '13px',
-                fontWeight: 700,
-                textDecoration: 'none',
-              }}
-            >
-              Portal Login
-            </Link>
-            <Link
               href={user ? '/' : '/auth'}
               style={{
-                padding: '8px 16px',
+                padding: '8px 18px',
                 borderRadius: '8px',
                 background: '#16A34A',
                 color: '#FFFFFF',
@@ -223,12 +208,10 @@ export default function LandingPage() {
           Connect instantly from <strong>₦100</strong>. Enjoy uninterrupted high-speed internet for browsing, streaming, work, and studies.
         </p>
 
-        {/* CTA Buttons */}
+        {/* CTA Button */}
         <div
           style={{
             display: 'flex',
-            flexWrap: 'wrap',
-            gap: '12px',
             justifyContent: 'center',
             marginBottom: '36px',
           }}
@@ -237,34 +220,18 @@ export default function LandingPage() {
             href="#plans"
             style={{
               display: 'inline-block',
-              padding: '13px 26px',
+              padding: '14px 32px',
               borderRadius: '10px',
               background: '#16A34A',
               color: '#FFFFFF',
               fontSize: '15px',
               fontWeight: 800,
               textDecoration: 'none',
-              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.25)',
+              boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)',
             }}
           >
-            Buy Wi-Fi Pass →
+            View Wi-Fi Passes →
           </a>
-          <Link
-            href="/login"
-            style={{
-              display: 'inline-block',
-              padding: '13px 22px',
-              borderRadius: '10px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              color: '#334155',
-              fontSize: '15px',
-              fontWeight: 700,
-              textDecoration: 'none',
-            }}
-          >
-            Enter Hotspot Code
-          </Link>
         </div>
 
         {/* Trust Points */}
@@ -632,9 +599,6 @@ export default function LandingPage() {
           <div style={{ display: 'flex', gap: '16px' }}>
             <Link href="/packages" style={{ color: '#475569', textDecoration: 'none' }}>
               Passes
-            </Link>
-            <Link href="/login" style={{ color: '#475569', textDecoration: 'none' }}>
-              Portal Login
             </Link>
             <Link href="/auth" style={{ color: '#475569', textDecoration: 'none' }}>
               Account

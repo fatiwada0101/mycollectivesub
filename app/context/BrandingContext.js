@@ -173,7 +173,7 @@ const BrandingContext = createContext({
   themeId: 'violet',
   palettes: THEME_PALETTES,
   setTheme: () => {},
-  mode: 'system',
+  mode: 'light',
   isDark: false,
   setMode: () => {},
   toggleMode: () => {},
@@ -183,43 +183,39 @@ const BrandingContext = createContext({
 export function BrandingProvider({ children }) {
   const [branding, setBranding] = useState(DEFAULT_BRANDING);
   const [loaded, setLoaded] = useState(false);
-  const [mode, setModeState] = useState('system'); // 'light' | 'dark' | 'system'
+  const [mode, setModeState] = useState('light'); // 'light' | 'dark' - default light
   const [isDark, setIsDark] = useState(false);
 
   const currentTheme = THEME_PALETTES[branding.theme] || THEME_PALETTES.violet;
 
-  // Read saved mode preference from localStorage
+  // Read saved mode preference from localStorage - default to light
   useEffect(() => {
     try {
       const saved = localStorage.getItem('asuk_theme_mode');
-      if (saved === 'dark' || saved === 'light' || saved === 'system') {
-        setModeState(saved);
+      if (saved === 'dark') {
+        setModeState('dark');
+      } else {
+        setModeState('light');
+        localStorage.setItem('asuk_theme_mode', 'light');
       }
     } catch {}
   }, []);
 
-  // Detect and resolve dark vs light mode with system listener
+  // Detect and resolve dark vs light mode - default light
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const updateThemeState = () => {
-      const darkActive = mode === 'dark' || (mode === 'system' && mediaQuery.matches);
-      setIsDark(darkActive);
+    const darkActive = mode === 'dark';
+    setIsDark(darkActive);
 
-      const root = document.documentElement;
-      if (darkActive) {
-        root.classList.add('dark');
-        root.setAttribute('data-theme', 'dark');
-      } else {
-        root.classList.remove('dark');
-        root.setAttribute('data-theme', 'light');
-      }
-    };
-
-    updateThemeState();
-    mediaQuery.addEventListener('change', updateThemeState);
-    return () => mediaQuery.removeEventListener('change', updateThemeState);
+    const root = document.documentElement;
+    if (darkActive) {
+      root.classList.add('dark');
+      root.setAttribute('data-theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      root.setAttribute('data-theme', 'light');
+    }
   }, [mode]);
 
   // Apply theme CSS variables to :root

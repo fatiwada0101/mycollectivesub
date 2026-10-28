@@ -14,12 +14,12 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#141417",
+  themeColor: "#FFFFFF",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="light">
       <head>
         <meta name="application-name" content="My Collective Sub Wi-Fi" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
