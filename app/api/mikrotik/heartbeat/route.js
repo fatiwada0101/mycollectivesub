@@ -98,15 +98,32 @@ async function handleHeartbeat(request) {
     let ipUpdated = false;
     let oldIp = router.ip_address;
 
-    // 3. Auto-update IP if router has a dynamic WAN IP that changed
-    // Only update if incomingIp is valid, not private, and not the VPS IP (187.7.22.89)
+    // 3. Auto-update IP only for direct routers on standard ports (80/443) with raw IPv4 addresses.
+    // Never overwrite VPS WireGuard proxy IPs (ports != 80/443), DDNS hostnames, polling routers,
+    // or explicitly preserved/known VPS hub IPs with the router's ISP CGNAT WAN IP.
+    const portNum = Number(router.port || 443);
+    const isVpsProxyPort = portNum !== 443 && portNum !== 80;
+    const isHostname = Boolean(router.ip_address && !/^\d{1,3}(\.\d{1,3}){3}$/.test(router.ip_address.trim()));
+    const protectedVpsIps = new Set(
+      ['187.7.22.89', '2.25.15.1', process.env.VPS_PUBLIC_IP]
+        .filter(Boolean)
+        .map((ip) => ip.trim())
+    );
+    const preserveIp =
+      url.searchParams.get('preserve_ip') === 'true' ||
+      url.searchParams.get('preserve_ip') === '1' ||
+      router.connection_mode === 'polling' ||
+      isVpsProxyPort ||
+      isHostname ||
+      protectedVpsIps.has((router.ip_address || '').trim());
+
     if (
+      !preserveIp &&
       incomingIp &&
       !isPrivateIp(incomingIp) &&
       incomingIp !== '127.0.0.1' &&
       incomingIp !== 'localhost' &&
-      router.ip_address !== incomingIp &&
-      router.ip_address !== '187.7.22.89' // Don't overwrite VPS WireGuard proxy IP
+      router.ip_address !== incomingIp
     ) {
       updates.ip_address = incomingIp;
       ipUpdated = true;

@@ -41,13 +41,13 @@ export async function GET(request) {
     const defaultBuyUrl = savedConfig.buyUrl
       || (savedBranding.app_url ? `${savedBranding.app_url.replace(/\/+$/, '')}/packages` : '')
       || (process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')}/packages` : '')
-      || 'https://www.asuk.tech/packages';
+      || 'https://www.mycollectivesub.si/packages';
 
-    const defaultName = savedConfig.businessName || savedBranding.app_name || config.wifi_ssid || 'African Network Wi-Fi';
+    const defaultName = savedConfig.businessName || savedBranding.app_name || config.wifi_ssid || 'MYCOLLECTIVESUB';
     const defaultLogo = savedConfig.logoUrl || savedBranding.logo_url || '';
 
-    const templateId = searchParams.get('template_id') || savedConfig.templateId || 'midnight-glass';
-    const wifiSsid = searchParams.get('wifi_ssid') || savedConfig.wifiSsid || config.wifi_ssid || 'African Network Wi-Fi';
+    const templateId = searchParams.get('template_id') || savedConfig.templateId || 'mycollective-blue';
+    const wifiSsid = searchParams.get('wifi_ssid') || savedConfig.wifiSsid || config.wifi_ssid || 'MYCOLLECTIVESUB Wi-Fi';
     const buyUrl = searchParams.get('buy_url') || defaultBuyUrl;
     const logoUrl = searchParams.get('logo_url') !== null && searchParams.get('logo_url') !== undefined ? searchParams.get('logo_url') : defaultLogo;
     const businessName = searchParams.get('business_name') || defaultName;
@@ -123,10 +123,10 @@ export async function POST(request) {
 
     const defaultBuyUrl = (savedBranding.app_url ? `${savedBranding.app_url.replace(/\/+$/, '')}/packages` : '')
       || (process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')}/packages` : '')
-      || 'https://www.asuk.tech/packages';
+      || 'https://www.mycollectivesub.si/packages';
 
-    const templateId = body.template_id || beforeConfig.templateId || 'midnight-glass';
-    const wifiSsid = body.wifi_ssid || beforeConfig.wifiSsid || config.wifi_ssid || 'African Network Wi-Fi';
+    const templateId = body.template_id || beforeConfig.templateId || 'mycollective-blue';
+    const wifiSsid = body.wifi_ssid || beforeConfig.wifiSsid || config.wifi_ssid || 'MYCOLLECTIVESUB Wi-Fi';
     const buyUrl = body.buy_url || beforeConfig.buyUrl || defaultBuyUrl;
     const logoUrl = body.logo_url !== undefined ? body.logo_url : (beforeConfig.logoUrl || savedBranding.logo_url || '');
     const businessName = body.business_name || beforeConfig.businessName || savedBranding.app_name || wifiSsid;

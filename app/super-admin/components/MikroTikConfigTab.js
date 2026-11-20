@@ -53,12 +53,12 @@ export default function MikroTikConfigTab({
 
   const activeRouter = routersList.find(r => r.id === selectedRouterId) || routersList[0] || null;
   const activeSecret = activeRouter?.polling_secret || 'YOUR_ROUTER_SECRET';
-  const activeRouterName = activeRouter?.name || mikrotikForm.wifi_ssid || 'African Network Router';
-  const appHostname = typeof window !== 'undefined' ? window.location.host : 'africannetwork.net';
+  const activeRouterName = activeRouter?.name || mikrotikForm.wifi_ssid || 'My Collective Sub Router';
+  const appHostname = typeof window !== 'undefined' ? window.location.host : 'www.mycollectivesub.com.ng';
   const appProtocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
 
   const watchdogScript = `# =======================================================
-# African Network - Power Cut Auto-Recovery & Watchdog
+# My Collective Sub - Power Cut Auto-Recovery & Watchdog
 # For: ${activeRouterName}
 # Paste into MikroTik WinBox -> Terminal
 # =======================================================
@@ -68,21 +68,21 @@ export default function MikroTikConfigTab({
 
 # 2. Configure robust SNTP with public IPs (works even if DNS is slow after power boot)
 :do { /system ntp client set enabled=yes servers=216.239.35.0,1.1.1.1 } on-error={
-  /system ntp client set enabled=yes primary-ntp=216.239.35.0 secondary-ntp=1.1.1.1
+  :do { /system ntp client set enabled=yes primary-ntp=216.239.35.0 secondary-ntp=1.1.1.1 } on-error={}
 }
 
 # 3. Ensure WireGuard tunnel has persistent keepalive
 :do {
-  /interface wireguard peers set [find endpoint-port=51820] persistent-keepalive=25s
+  /interface wireguard peers set [find interface=wg-vps] persistent-keepalive=25s
 } on-error={}
 
 # 4. Remove previous watchdog if present
 :do { /system scheduler remove [find name="an-power-watchdog"] } on-error={}
 :do { /system script remove [find name="an-watchdog-script"] } on-error={}
 
-# 5. Create Auto-Recovery Watchdog Script
+# 5. Create Auto-Recovery Watchdog Script (hub 10.100.0.1)
 /system script add name="an-watchdog-script" policy=read,write,test source={
-  :local vpsIp "10.10.10.1"
+  :local vpsIp "10.100.0.1"
   :local pingCount [/ping $vpsIp count=2]
   :if ($pingCount = 0) do={
     :log warning "Watchdog: WireGuard unreachable after power reboot. Cycling interface..."
@@ -94,14 +94,14 @@ export default function MikroTikConfigTab({
     :do { /ip cloud force-update } on-error={}
   }
   :do {
-    /tool fetch url="${appProtocol}//${appHostname}/api/mikrotik/heartbeat?secret=${activeSecret}" mode=https check-certificate=no keep-result=no
+    /tool fetch url="${appProtocol}//${appHostname}/api/mikrotik/heartbeat?secret=${activeSecret}&preserve_ip=1" mode=https check-certificate=no keep-result=no
   } on-error={}
 }
 
 # 6. Schedule Watchdog to run on router boot & every 60s
 /system scheduler add name="an-power-watchdog" start-time=startup interval=60s on-event="/system script run an-watchdog-script" policy=read,write,test
 
-:log info "African Network: Auto-Recovery Watchdog installed successfully!"
+:log info "My Collective Sub: Auto-Recovery Watchdog installed successfully!"
 :put "SUCCESS: Watchdog installed! ${activeRouterName} will auto-reconnect after any power cut."`;
 
   const handleCopyWatchdog = () => {

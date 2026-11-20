@@ -224,30 +224,49 @@ export default function SetupDocsTab({
   onNavigateTab = null,
 }) {
   const [activeGuide, setActiveGuide] = useState('overview');
-  const [apiPassword, setApiPassword] = useState('AfricanNet2026!');
+
+  const isPrivateHost = (ip) =>
+    !ip || /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip.trim());
+
+  const activeRouter = routersList.find(r => r.id === selectedRouterId) || routersList[0] || null;
+  const inferredVpsHost = !isPrivateHost(activeRouter?.ip_address)
+    ? activeRouter.ip_address.trim()
+    : '2.25.15.1';
+  const inferredApiUser =
+    activeRouter?.username && activeRouter.username !== 'admin'
+      ? activeRouter.username
+      : 'mycollectivesub';
+
+  const [vpsHost, setVpsHost] = useState(inferredVpsHost);
+  const [vpnSubnet, setVpnSubnet] = useState('10.100.0');
+  const [apiUsername, setApiUsername] = useState(inferredApiUser);
+  const [apiPassword, setApiPassword] = useState('');
   const [showApiPassword, setShowApiPassword] = useState(true);
 
   const generateRandomPassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
     let res = '';
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 14; i++) {
       res += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setApiPassword(res);
   };
 
-  const activeRouter = routersList.find(r => r.id === selectedRouterId) || routersList[0] || null;
   const activeSecret = activeRouter?.polling_secret || 'YOUR_ROUTER_SECRET';
-  const activeRouterName = activeRouter?.name || 'African Network Router';
-  const appHostname = typeof window !== 'undefined' ? window.location.host : 'africannetwork.net';
+  const activeRouterName = activeRouter?.name || 'My Collective Sub Router';
+  const appHostname = typeof window !== 'undefined' ? window.location.host : 'www.mycollectivesub.com.ng';
   const appProtocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
-  // Smart sequential auto-calculation for new router additions
-  const nextRouterNumber = Math.max(routersList.length + 1, 3);
-  const defaultNextVpnIp = `10.10.10.${nextRouterNumber + 1}`;
-  const defaultNextVpsPort = String(8728 + nextRouterNumber);
+
+  const cleanSubnet = (vpnSubnet || '10.100.0').replace(/\.$/, '');
+  const vpsHubIp = `${cleanSubnet}.1`;
+
+  // Sequential router numbering starting at Router 1 (10.100.0.2, port 8443)
+  const nextRouterNumber = routersList.length + 1;
+  const defaultNextVpnIp = `${cleanSubnet}.${nextRouterNumber + 1}`;
+  const defaultNextVpsPort = String(8442 + nextRouterNumber);
 
   // New Router Interactive Generator State (100% reactive & synchronized)
-  const [newRouterName, setNewRouterName] = useState(`Branch Router ${nextRouterNumber}`);
+  const [newRouterName, setNewRouterName] = useState(`Katsina Hub ${nextRouterNumber}`);
   const [newRouterVpnIp, setNewRouterVpnIp] = useState(defaultNextVpnIp);
   const [newRouterVpsPort, setNewRouterVpsPort] = useState(defaultNextVpsPort);
   const [newRouterPublicKey, setNewRouterPublicKey] = useState('');
@@ -271,8 +290,11 @@ export default function SetupDocsTab({
       if (draftRaw) {
         const d = JSON.parse(draftRaw);
         if (d.name) setNewRouterName(d.name);
+        if (d.vpsHost) setVpsHost(d.vpsHost);
+        if (d.vpnSubnet) setVpnSubnet(d.vpnSubnet);
         if (d.vpnIp) setNewRouterVpnIp(d.vpnIp);
         if (d.vpsPort) setNewRouterVpsPort(d.vpsPort);
+        if (d.apiUsername) setApiUsername(d.apiUsername);
         if (d.password) setApiPassword(d.password);
         if (d.routerPublicKey) setNewRouterPublicKey(d.routerPublicKey);
         if (d.vpsPublicKey) setVpsPublicKey(d.vpsPublicKey);
@@ -288,8 +310,11 @@ export default function SetupDocsTab({
     try {
       const config = {
         name: newRouterName,
+        vpsHost,
+        vpnSubnet: cleanSubnet,
         vpnIp: newRouterVpnIp,
         vpsPort: newRouterVpsPort,
+        apiUsername,
         password: apiPassword,
         routerPublicKey: newRouterPublicKey,
         vpsPublicKey: vpsPublicKey,
@@ -297,20 +322,20 @@ export default function SetupDocsTab({
       };
       localStorage.setItem('an_current_new_router_config', JSON.stringify(config));
     } catch (e) {}
-  }, [newRouterName, newRouterVpnIp, newRouterVpsPort, apiPassword, newRouterPublicKey, vpsPublicKey]);
+  }, [newRouterName, vpsHost, cleanSubnet, newRouterVpnIp, newRouterVpsPort, apiUsername, apiPassword, newRouterPublicKey, vpsPublicKey]);
 
   // Save current configuration as a permanent named preset (with completion validation)
   const isRouterConfigFinished = Boolean(
     newRouterPublicKey &&
-    newRouterPublicKey.trim().length > 15 &&
+    newRouterPublicKey.trim().length === 44 &&
     !newRouterPublicKey.includes('<')
   );
 
   const handleSaveAsPreset = () => {
-    const name = (newRouterName || `Branch Router ${nextRouterNumber}`).trim();
+    const name = (newRouterName || `Katsina Hub ${nextRouterNumber}`).trim();
     if (!isRouterConfigFinished) {
       const confirmSave = confirm(
-        '⚠️ Router Public Key has not been pasted yet from Phase 1.\n\nWould you still like to save this as a working preset? (It will be marked as in-progress until the key is added).'
+        '⚠️ Router Public Key (44 characters) has not been pasted yet from Phase 1.\n\nWould you still like to save this as an in-progress preset?'
       );
       if (!confirmSave) return;
     }
@@ -318,9 +343,12 @@ export default function SetupDocsTab({
     const newPreset = {
       id: 'preset_' + Date.now(),
       name,
+      vpsHost: (vpsHost || '2.25.15.1').trim(),
+      vpnSubnet: cleanSubnet,
       vpnIp: newRouterVpnIp || defaultNextVpnIp,
       vpsPort: newRouterVpsPort || defaultNextVpsPort,
-      password: apiPassword || 'AfricanNet2026!',
+      apiUsername: (apiUsername || 'mycollectivesub').trim(),
+      password: apiPassword || '',
       routerPublicKey: newRouterPublicKey || '',
       vpsPublicKey: vpsPublicKey || '',
       isCompleted: isRouterConfigFinished,
@@ -337,7 +365,7 @@ export default function SetupDocsTab({
     if (isRouterConfigFinished) {
       setPresetFeedback(`✅ Completed preset "${name}" saved! Ready for 1-click import in Locations & Fleet.`);
     } else {
-      setPresetFeedback(`📝 Saved in-progress draft "${name}". Complete Phase 1 to activate in Locations & Fleet.`);
+      setPresetFeedback(`📝 Saved in-progress draft "${name}". Paste the 44-char key from Phase 1 to finalize.`);
     }
     setTimeout(() => setPresetFeedback(''), 5000);
   };
@@ -349,8 +377,11 @@ export default function SetupDocsTab({
     const p = savedPresets.find(item => item.id === presetId);
     if (p) {
       if (p.name) setNewRouterName(p.name);
+      if (p.vpsHost) setVpsHost(p.vpsHost);
+      if (p.vpnSubnet) setVpnSubnet(p.vpnSubnet);
       if (p.vpnIp) setNewRouterVpnIp(p.vpnIp);
       if (p.vpsPort) setNewRouterVpsPort(p.vpsPort);
+      if (p.apiUsername) setApiUsername(p.apiUsername);
       if (p.password) setApiPassword(p.password);
       if (p.routerPublicKey !== undefined) setNewRouterPublicKey(p.routerPublicKey);
       if (p.vpsPublicKey !== undefined) setVpsPublicKey(p.vpsPublicKey);
@@ -374,15 +405,22 @@ export default function SetupDocsTab({
   // Keep defaults updated when routersList loads
   useEffect(() => {
     if (routersList.length > 0) {
-      const nextNum = Math.max(routersList.length + 1, 3);
-      setNewRouterName(prev => (!prev || prev.startsWith('Branch Router')) ? `Branch Router ${nextNum}` : prev);
-      setNewRouterVpnIp(prev => (!prev || prev.startsWith('10.10.10.')) ? `10.10.10.${nextNum + 1}` : prev);
-      setNewRouterVpsPort(prev => (!prev || (Number(prev) >= 8729 && Number(prev) <= 8740)) ? String(8728 + nextNum) : prev);
+      const nextNum = routersList.length + 1;
+      setNewRouterName(prev => (!prev || /^((Branch Router|Katsina Hub) \d+)$/.test(prev)) ? `Katsina Hub ${nextNum}` : prev);
+      setNewRouterVpnIp(prev => (!prev || prev.startsWith(`${cleanSubnet}.`)) ? `${cleanSubnet}.${nextNum + 1}` : prev);
+      setNewRouterVpsPort(prev => (!prev || (Number(prev) >= 8443 && Number(prev) <= 8499)) ? String(8442 + nextNum) : prev);
+      if (!isPrivateHost(activeRouter?.ip_address)) {
+        setVpsHost(prev => prev === '2.25.15.1' ? activeRouter.ip_address.trim() : prev);
+      }
     }
-  }, [routersList.length]);
+  }, [routersList.length, cleanSubnet, activeRouter?.ip_address]);
 
   const nextVpnIp = newRouterVpnIp || defaultNextVpnIp;
   const nextVpsPort = newRouterVpsPort || defaultNextVpsPort;
+  const cleanVpsHost = (vpsHost || '2.25.15.1').trim();
+  const apiUser = (apiUsername || 'mycollectivesub').trim();
+  const pw = apiPassword || 'YOUR_STRONG_API_PASSWORD';
+  const heartbeatUrl = `${appProtocol}//${appHostname}/api/mikrotik/heartbeat?secret=${activeSecret}&preserve_ip=1`;
 
   // ── Guide navigation pills ────────────────────────────
   const guides = [
@@ -396,49 +434,59 @@ export default function SetupDocsTab({
   ];
 
   // ═══════════════════════════════════════════════════════
-  // MASTER 1-SHOT CONFIG SCRIPT
+  // MASTER 1-SHOT CONFIG SCRIPT (Ubuntu 26.04 + RouterOS 7.20 verified)
   // ═══════════════════════════════════════════════════════
   const masterConfigScript = `# ═══════════════════════════════════════════════════════════
-# AFRICAN NETWORK — MASTER 1-SHOT MikroTik Configuration
+# MY COLLECTIVE SUB — MASTER 1-SHOT MikroTik Configuration
 # ═══════════════════════════════════════════════════════════
-# Paste this ENTIRE block into WinBox → Terminal
-# This configures REST API, Cloud DDNS, NTP, WireGuard
-# keepalive, and the auto-recovery watchdog in ONE shot.
+# Paste this ENTIRE block into WinBox → Terminal. Safe to re-run.
+# Requires the wg-vps WireGuard tunnel (Phases 1–3) to be up.
+# Includes: Firewall TCP 443 over wg-vps, SSL cert, API user,
+# Cloud DDNS, direct-IP NTP, WireGuard keepalive, and watchdog (${vpsHubIp}).
 # ═══════════════════════════════════════════════════════════
 
-# ─── 1. Enable REST API on HTTPS port 443 ───
-/ip service set www-ssl disabled=no port=443
-/ip service set api-ssl disabled=no
-
-# ─── 2. Create a dedicated REST API user (change password!) ───
-:do { /user add name=api-user group=full password="${apiPassword || 'AfricanNet2026!'}" } on-error={
-  :log info "User 'api-user' already exists — updating password"
-  /user set [find name=api-user] password="${apiPassword || 'AfricanNet2026!'}"
-}
-
-# ─── 3. Enable MikroTik Cloud DDNS & Time Sync ───
-/ip cloud set ddns-enabled=yes update-time=yes
-
-# ─── 4. Configure robust NTP (direct IPs — works before DNS) ───
-:do { /system ntp client set enabled=yes servers=216.239.35.0,1.1.1.1 } on-error={
-  /system ntp client set enabled=yes primary-ntp=216.239.35.0 secondary-ntp=1.1.1.1
-}
-
-# ─── 5. Set WireGuard persistent keepalive (prevents NAT timeout) ───
+# ─── 1. Allow REST API (TCP 443) over WireGuard in the router firewall ───
+# Without this, ping works but REST API calls "time out".
+:do { /ip firewall filter remove [find comment="Allow REST API over WireGuard"] } on-error={}
 :do {
-  /interface wireguard peers set [find endpoint-port=51820] persistent-keepalive=25s
-} on-error={}
+  /ip firewall filter add chain=input in-interface=wg-vps protocol=tcp dst-port=443 action=accept place-before=0 comment="Allow REST API over WireGuard"
+} on-error={
+  /ip firewall filter add chain=input in-interface=wg-vps protocol=tcp dst-port=443 action=accept comment="Allow REST API over WireGuard"
+}
 
-# ─── 6. Remove old watchdog if present ───
+# ─── 2. Self-signed SSL certificate for HTTPS REST API ───
+# Without a certificate assigned to www-ssl, you get "sslv3 alert handshake failure".
+:if ([:len [/certificate find name=local-cert]] = 0) do={
+  /certificate add name=local-cert common-name=router days-valid=3650 key-size=2048
+  /certificate sign local-cert
+}
+/ip service set www-ssl certificate=local-cert disabled=no port=443
+:do { /ip service set api-ssl certificate=local-cert disabled=no } on-error={}
+
+# ─── 3. Dedicated REST API user ───
+:if ([:len [/user find name="${apiUser}"]] = 0) do={
+  /user add name="${apiUser}" group=full password="${pw}"
+} else={
+  /user set [find name="${apiUser}"] password="${pw}"
+}
+
+# ─── 4. Enable MikroTik Cloud DDNS & direct-IP NTP (fixes 1970 clock after power loss) ───
+/ip cloud set ddns-enabled=yes update-time=yes
+:do { /system ntp client set enabled=yes servers=216.239.35.0,1.1.1.1 } on-error={
+  :do { /system ntp client set enabled=yes primary-ntp=216.239.35.0 secondary-ntp=1.1.1.1 } on-error={}
+}
+
+# ─── 5. WireGuard persistent keepalive (prevents ISP CGNAT timeout) ───
+:do { /interface wireguard peers set [find interface=wg-vps] persistent-keepalive=25s } on-error={}
+
+# ─── 6. Auto-Recovery Watchdog (pings hub ${vpsHubIp}) ───
 :do { /system scheduler remove [find name="an-power-watchdog"] } on-error={}
 :do { /system script remove [find name="an-watchdog-script"] } on-error={}
-
-# ─── 7. Create Auto-Recovery Watchdog Script ───
 /system script add name="an-watchdog-script" policy=read,write,test source={
-  :local vpsIp "10.10.10.1"
+  :local vpsIp "${vpsHubIp}"
   :local pingCount [/ping $vpsIp count=2]
   :if ($pingCount = 0) do={
-    :log warning "Watchdog: WireGuard unreachable. Cycling interface..."
+    :log warning "Watchdog: WireGuard hub unreachable. Cycling wg-vps..."
     :do {
       /interface wireguard disable [find name="wg-vps"]
       :delay 2s
@@ -447,148 +495,148 @@ export default function SetupDocsTab({
     :do { /ip cloud force-update } on-error={}
   }
   :do {
-    /tool fetch url="${appProtocol}//${appHostname}/api/mikrotik/heartbeat?secret=${activeSecret}" mode=https check-certificate=no keep-result=no
+    /tool fetch url="${heartbeatUrl}" mode=https check-certificate=no keep-result=no
   } on-error={}
 }
-
-# ─── 8. Schedule watchdog: runs on boot + every 60s ───
 /system scheduler add name="an-power-watchdog" start-time=startup interval=60s on-event="/system script run an-watchdog-script" policy=read,write,test
 
-# ─── 9. Generate self-signed SSL cert if none exists ───
-:do {
-  /certificate add name=local-cert common-name=router key-size=2048
-  /certificate sign local-cert
-  /ip service set www-ssl certificate=local-cert
-} on-error={
-  :log info "SSL cert already exists — skipping"
-}
-
-:log info "═══ African Network: Master config applied successfully! ═══"
+:log info "=== My Collective Sub: Master config applied ==="
 :put ""
 :put "SUCCESS! Router is now configured for:"
-:put "  ✅ REST API on HTTPS port 443"
-:put "  ✅ Cloud DDNS & auto time sync"  
-:put "  ✅ WireGuard keepalive (25s)"
-:put "  ✅ Power-cut auto-recovery watchdog"
-:put "  ✅ Heartbeat reporting to cloud"
+:put "  - Firewall TCP 443 allowed over wg-vps"
+:put "  - REST API on HTTPS 443 (SSL cert: local-cert)"
+:put "  - API user: ${apiUser}"
+:put "  - Cloud DDNS + direct-IP NTP"
+:put "  - WireGuard keepalive 25s + watchdog (hub ${vpsHubIp})"
 :put ""
-:put "Next: Add this router in your Admin Dashboard → Locations & Fleet"`;
+:put "Next: Locations & Fleet -> Add Router (${cleanVpsHost}:${nextVpsPort})"`;
 
   // ═══════════════════════════════════════════════════════
   // VPS SETUP SCRIPTS
   // ═══════════════════════════════════════════════════════
   const vpsInstallScript = `# ═══════════════════════════════════════════════════════════
-# VPS Full Setup (Run on Hostinger VPS via SSH)
+# VPS WireGuard Hub Setup — Ubuntu 22.04 / 24.04 / 26.04 LTS
+# SSH in first:  ssh root@${cleanVpsHost}
+# ═══════════════════════════════════════════════════════════
+# IMPORTANT: Do NOT install iptables-persistent — on Ubuntu 26.04
+# it conflicts with ufw and aborts the install.
+# All NAT & port-forward rules live in wg0.conf PostUp/PostDown.
 # ═══════════════════════════════════════════════════════════
 
-# 1. Install WireGuard
-apt update && apt install -y wireguard
+# 1. Install WireGuard only
+apt-get update && apt-get install -y wireguard
 
-# 2. Enable IP forwarding
-sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+# 2. Persistent IP forwarding (Ubuntu 26.04 uses /etc/sysctl.d, no /etc/sysctl.conf)
+echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-wireguard.conf
+sysctl --system > /dev/null
 
-# 3. Open firewall ports
-ufw allow 22/tcp       # SSH
-ufw allow 51820/udp    # WireGuard
-ufw allow 8443/tcp     # Router 1 API
-ufw allow 8730/tcp     # Router 2 API
+# 3. Allow UFW forwarding + open SSH, WireGuard & router API ports
+sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+ufw allow 22/tcp
+ufw allow 51820/udp
+ufw allow 8443:8499/tcp
+ufw --force enable
+ufw reload
 
-# 4. Start and enable WireGuard
+# 4. Auto-detect primary WAN interface (eth0, ens3, enp1s0, etc.)
+WAN_IFACE=$(ip -o -4 route show to default | awk '{print $5}' | head -n1)
+echo "Detected WAN interface: $WAN_IFACE"
+
+# 5. Generate VPS keys (re-uses existing keys if already present)
+mkdir -p /etc/wireguard && cd /etc/wireguard && umask 077
+[ -f server_private.key ] || (wg genkey | tee server_private.key | wg pubkey > server_public.key)
+SERVER_PRIV=$(cat server_private.key)
+SERVER_PUB=$(cat server_public.key)
+
+# 6. Create wg0.conf (skipped if it exists so existing router peers are safe)
+#    Includes "POSTROUTING -o wg0 MASQUERADE" (return-path fix so external
+#    dashboard traffic gets replies through the tunnel instead of the ISP WAN).
+if [ -f /etc/wireguard/wg0.conf ]; then
+  echo "wg0.conf already exists — keeping existing config and peers"
+else
+cat <<EOF > /etc/wireguard/wg0.conf
+[Interface]
+Address = ${vpsHubIp}/24
+ListenPort = 51820
+PrivateKey = $SERVER_PRIV
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $WAN_IFACE -j MASQUERADE; iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o $WAN_IFACE -j MASQUERADE; iptables -t nat -D POSTROUTING -o wg0 -j MASQUERADE
+EOF
+fi
+
+# 7. Enable & start WireGuard
 systemctl enable wg-quick@wg0
-systemctl start wg-quick@wg0
-
-# 5. Verify
+systemctl restart wg-quick@wg0
 wg show
-iptables -t nat -L -n | grep -E "8443|8730"
-cat /proc/sys/net/ipv4/ip_forward`;
 
-  const wg0ConfTemplate = `[Interface]
-Address = 10.10.10.1/24
+echo "=========================================="
+echo "VPS WireGuard Public Key: $SERVER_PUB"
+echo "=========================================="
+echo "Paste this key into 'VPS WireGuard Public Key' under Add New Router."`;
+
+  const wg0ConfTemplate = `# /etc/wireguard/wg0.conf (generated & updated automatically by the scripts)
+[Interface]
+Address = ${vpsHubIp}/24
 ListenPort = 51820
 PrivateKey = <VPS_PRIVATE_KEY>
 
-# ─── Port Forwarding Rules ───
-# Router 1: VPS port 8443 → 10.10.10.2:443
-PostUp = iptables -t nat -A PREROUTING -p tcp --dport 8443 -j DNAT --to-destination 10.10.10.2:443
-PostUp = iptables -A FORWARD -p tcp -d 10.10.10.2 --dport 443 -j ACCEPT
-
-# Router 2: VPS port 8730 → 10.10.10.3:443
-PostUp = iptables -t nat -A PREROUTING -p tcp --dport 8730 -j DNAT --to-destination 10.10.10.3:443
-PostUp = iptables -A FORWARD -p tcp -d 10.10.10.3 --dport 443 -j ACCEPT
-
-PostUp = iptables -t nat -A POSTROUTING -j MASQUERADE
-
-PostDown = iptables -t nat -D PREROUTING -p tcp --dport 8443 -j DNAT --to-destination 10.10.10.2:443
-PostDown = iptables -D FORWARD -p tcp -d 10.10.10.2 --dport 443 -j ACCEPT
-PostDown = iptables -t nat -D PREROUTING -p tcp --dport 8730 -j DNAT --to-destination 10.10.10.3:443
-PostDown = iptables -D FORWARD -p tcp -d 10.10.10.3 --dport 443 -j ACCEPT
-PostDown = iptables -t nat -D POSTROUTING -j MASQUERADE
+# Base NAT + return-path fix ("POSTROUTING -o wg0 -j MASQUERADE" is REQUIRED)
+# Plus persisted router port-forwards:
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE; iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 8443 -j DNAT --to-destination ${cleanSubnet}.2:443; iptables -A FORWARD -p tcp -d ${cleanSubnet}.2 --dport 443 -j ACCEPT
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; iptables -t nat -D POSTROUTING -o wg0 -j MASQUERADE; iptables -t nat -D PREROUTING -i eth0 -p tcp --dport 8443 -j DNAT --to-destination ${cleanSubnet}.2:443; iptables -D FORWARD -p tcp -d ${cleanSubnet}.2 --dport 443 -j ACCEPT
 
 # ─── Peers ───
 [Peer]
-# Router 1
+# Router 1 (VPS port 8443 -> ${cleanSubnet}.2:443)
 PublicKey = <ROUTER_1_PUBLIC_KEY>
-AllowedIPs = 10.10.10.2/32
+AllowedIPs = ${cleanSubnet}.2/32
 
 [Peer]
-# Router 2
+# Router 2 (VPS port 8444 -> ${cleanSubnet}.3:443)
 PublicKey = <ROUTER_2_PUBLIC_KEY>
-AllowedIPs = 10.10.10.3/32`;
+AllowedIPs = ${cleanSubnet}.3/32`;
 
   // ═══════════════════════════════════════════════════════
   // ADD NEW ROUTER SCRIPTS (SYNCHRONIZED & EXECUTABLE)
   // ═══════════════════════════════════════════════════════
 
-  // Phase 1: MikroTik Create WireGuard Interface
+  // Phase 1: MikroTik Create WireGuard Interface (single-line, no "\" continuation issues)
   const addRouterPhase1Script = `# ═══════════════════════════════════════════════════════
-# Phase 1: Create WireGuard Interface on New Router
-# Run on the NEW MikroTik Router via WinBox → Terminal
+# Phase 1: Create WireGuard Interface on the NEW Router
+# WinBox → New Terminal (single-line commands, zero "\\" prompt hangs)
 # ═══════════════════════════════════════════════════════
 
-# 1. Create WireGuard interface
-:do {
-  /interface wireguard add name=wg-vps listen-port=0 mtu=1420
-} on-error={
-  :log info "WireGuard interface wg-vps already exists"
-}
+:if ([:len [/interface wireguard find name=wg-vps]] = 0) do={ /interface wireguard add name=wg-vps listen-port=13231 mtu=1420 }
 
-# 2. Print Public Key
-:put ""
-:put "═══════════════════════════════════════════════════════"
-:put "COPY THIS PUBLIC KEY (paste into form in admin dashboard):"
-:put "═══════════════════════════════════════════════════════"
+:put "COPY the 44-char public-key below (this is the ROUTER key, NOT the VPS key):"
 /interface wireguard print where name=wg-vps`;
 
   // Phase 2: VPS 1-Shot Zero-Downtime Hot-Add Bash Script
   const addRouterVpsScript = `# ═══════════════════════════════════════════════════════
-# Phase 2: Add Router to VPS (1-Shot Zero-Downtime Script)
-# SSH into Hostinger VPS: ssh root@187.7.22.89
-# Paste this ENTIRE block into VPS SSH Terminal
+# Phase 2: Register Router on VPS (1-shot, zero downtime)
+# SSH:  ssh root@${cleanVpsHost}   then paste this ENTIRE block
 # ═══════════════════════════════════════════════════════
 
-ROUTER_NAME="${newRouterName || `Branch Router ${nextRouterNumber}`}"
+ROUTER_NAME="${newRouterName || `Katsina Hub ${nextRouterNumber}`}"
 ROUTER_KEY="${(newRouterPublicKey || '').trim() || '<PASTE_ROUTER_PUBLIC_KEY>'}"
-ROUTER_IP="${newRouterVpnIp || defaultNextVpnIp}"
-VPS_PORT="${newRouterVpsPort || defaultNextVpsPort}"
+ROUTER_IP="${nextVpnIp}"
+VPS_PORT="${nextVpsPort}"
+CONF=/etc/wireguard/wg0.conf
+WAN_IFACE=$(ip -o -4 route show to default | awk '{print $5}' | head -n1)
 
-echo "═══════════════════════════════════════════════════════"
-echo "Registering $ROUTER_NAME on VPS Hub"
-echo "  • WireGuard Tunnel IP: $ROUTER_IP"
-echo "  • Forwarding Port: $VPS_PORT -> $ROUTER_IP:443"
-echo "═══════════════════════════════════════════════════════"
+# 0. Validate router public key (must be the 44-char base64 key from Phase 1)
+KEYLEN=$(printf %s "$ROUTER_KEY" | wc -c)
+if [ "$KEYLEN" -ne 44 ]; then
+  echo "ERROR: Router public key is missing or invalid ($KEYLEN chars)."
+  echo "Copy the router's public-key from WinBox (Phase 1) and paste it above first."
+else
 
-if [ "$ROUTER_KEY" = "<PASTE_ROUTER_PUBLIC_KEY>" ] || [ -z "$ROUTER_KEY" ]; then
-  echo "⚠️ ERROR: Router Public Key is missing!"
-  echo "Please copy the public key from WinBox (Phase 1) and paste it into the dashboard form."
-  exit 1
-fi
+# 1. Clean any leftover invalid placeholder lines if an earlier draft failed
+sed -i '/PASTE_ROUTER_PUBLIC_KEY/,+1d; /PASTE_MIKROTIK_PUBLIC_KEY_HERE/,+1d' $CONF
 
-# 1. Authorize peer LIVE on WireGuard without restart (Zero downtime for other routers)
+# 2. Authorize peer LIVE without restarting WireGuard (zero downtime for other routers)
 wg set wg0 peer "$ROUTER_KEY" allowed-ips "$ROUTER_IP/32"
-
-# 2. Append peer to /etc/wireguard/wg0.conf for reboot persistence
-cat <<EOF >> /etc/wireguard/wg0.conf
+grep -q "$ROUTER_KEY" $CONF || cat <<EOF >> $CONF
 
 [Peer]
 # $ROUTER_NAME
@@ -596,112 +644,83 @@ PublicKey = $ROUTER_KEY
 AllowedIPs = $ROUTER_IP/32
 EOF
 
-# 3. Add live NAT port forwarding to iptables (Forward $VPS_PORT -> $ROUTER_IP:443)
-iptables -t nat -A PREROUTING -p tcp --dport $VPS_PORT -j DNAT --to-destination $ROUTER_IP:443
-iptables -A FORWARD -p tcp -d $ROUTER_IP --dport 443 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
-iptables -t nat -A POSTROUTING -j MASQUERADE
-
-# 4. Open port in UFW firewall
+# 3. Live port forward (idempotent) + return-path MASQUERADE on wg0
+iptables -t nat -C PREROUTING -i $WAN_IFACE -p tcp --dport $VPS_PORT -j DNAT --to-destination $ROUTER_IP:443 2>/dev/null || iptables -t nat -A PREROUTING -i $WAN_IFACE -p tcp --dport $VPS_PORT -j DNAT --to-destination $ROUTER_IP:443
+iptables -C FORWARD -p tcp -d $ROUTER_IP --dport 443 -j ACCEPT 2>/dev/null || iptables -A FORWARD -p tcp -d $ROUTER_IP --dport 443 -j ACCEPT
+iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
 ufw allow $VPS_PORT/tcp
 
-# 5. Persist firewall rules permanently across reboots
-if command -v netfilter-persistent >/dev/null 2>&1; then
-  netfilter-persistent save
-elif [ -d /etc/iptables ]; then
-  iptables-save > /etc/iptables/rules.v4
-fi
+# 4. Persist rules in wg0.conf PostUp/PostDown (works on Ubuntu 26.04 without iptables-persistent)
+grep -q "dport $VPS_PORT " $CONF || {
+  sed -i "/^PostUp =/ s|$|; iptables -t nat -A PREROUTING -i $WAN_IFACE -p tcp --dport $VPS_PORT -j DNAT --to-destination $ROUTER_IP:443; iptables -A FORWARD -p tcp -d $ROUTER_IP --dport 443 -j ACCEPT|" $CONF
+  sed -i "/^PostDown =/ s|$|; iptables -t nat -D PREROUTING -i $WAN_IFACE -p tcp --dport $VPS_PORT -j DNAT --to-destination $ROUTER_IP:443; iptables -D FORWARD -p tcp -d $ROUTER_IP --dport 443 -j ACCEPT|" $CONF
+}
+grep -q "POSTROUTING -o wg0" $CONF || {
+  sed -i "/^PostUp =/ s|$|; iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE|" $CONF
+  sed -i "/^PostDown =/ s|$|; iptables -t nat -D POSTROUTING -o wg0 -j MASQUERADE|" $CONF
+}
 
 echo ""
-echo "═══════════════════════════════════════════════════════"
-echo "✅ SUCCESS! $ROUTER_NAME is registered on VPS."
-echo "═══════════════════════════════════════════════════════"
-wg show wg0`;
+echo "SUCCESS: $ROUTER_NAME registered ($ROUTER_IP, VPS port $VPS_PORT)"
+wg show wg0
+echo "Note: Run Phase 3 on MikroTik (/ping ${vpsHubIp} count=3) to trigger the handshake."
+ping -c 3 $ROUTER_IP
+fi`;
 
-  // Phase 3: MikroTik Connect to VPS & Verify Tunnel
+  // Phase 3: MikroTik Connect to VPS & Verify Tunnel (single-line commands)
   const addRouterPhase3Script = `# ═══════════════════════════════════════════════════════
-# Phase 3: Connect to VPS WireGuard & Test Ping
+# Phase 3: Connect Router to VPS Hub & Trigger Handshake
 # Run on the NEW MikroTik Router via WinBox → Terminal
 # ═══════════════════════════════════════════════════════
 
-# 1. Assign VPN IP to WireGuard interface
-:do {
-  /ip address add address=${newRouterVpnIp || defaultNextVpnIp}/24 interface=wg-vps
-} on-error={
-  /ip address set [find interface=wg-vps] address=${newRouterVpnIp || defaultNextVpnIp}/24
-}
+# 1. Assign WireGuard Tunnel IP
+:if ([:len [/ip address find interface=wg-vps]] = 0) do={ /ip address add address=${nextVpnIp}/24 interface=wg-vps } else={ /ip address set [find interface=wg-vps] address=${nextVpnIp}/24 }
 
-# 2. Add VPS as peer with 25s persistent keepalive
-:do {
-  /interface wireguard peers add \\
-    interface=wg-vps \\
-    public-key="${(vpsPublicKey || '').trim() || '<VPS_PUBLIC_KEY>'}" \\
-    endpoint-address="187.7.22.89" \\
-    endpoint-port=51820 \\
-    allowed-address=10.10.10.0/24 \\
-    persistent-keepalive=25s
-} on-error={
-  /interface wireguard peers set [find interface=wg-vps] \\
-    public-key="${(vpsPublicKey || '').trim() || '<VPS_PUBLIC_KEY>'}" \\
-    endpoint-address="187.7.22.89" \\
-    endpoint-port=51820 \\
-    allowed-address=10.10.10.0/24 \\
-    persistent-keepalive=25s
-}
+# 2. Add/update VPS peer (uses the VPS public key, NOT the router key)
+:if ([:len [/interface wireguard peers find interface=wg-vps]] = 0) do={ /interface wireguard peers add interface=wg-vps public-key="${(vpsPublicKey || '').trim() || '<VPS_PUBLIC_KEY>'}" endpoint-address="${cleanVpsHost}" endpoint-port=51820 allowed-address=${cleanSubnet}.0/24 persistent-keepalive=25s } else={ /interface wireguard peers set [find interface=wg-vps] public-key="${(vpsPublicKey || '').trim() || '<VPS_PUBLIC_KEY>'}" endpoint-address="${cleanVpsHost}" endpoint-port=51820 allowed-address=${cleanSubnet}.0/24 persistent-keepalive=25s }
 
-# 3. Test ping to VPS Hub
-:put ""
-:put "Testing ping to VPS Hub (10.10.10.1)..."
-/ping 10.10.10.1 count=3
-
-:put ""
-:put "If ping succeeds (0% packet loss), WireGuard tunnel is UP!"
-:put "Next: Proceed to Phase 4 (Master 1-Shot Config)."`;
+# 3. Verify VPS reachability & force immediate WireGuard handshake
+/ping ${cleanVpsHost} count=2
+/ping ${vpsHubIp} count=3
+/interface wireguard peers print`;
 
   // ═══════════════════════════════════════════════════════
   // REST API ONLY SETUP
   // ═══════════════════════════════════════════════════════
   const restApiSetupScript = `# ═══════════════════════════════════════════════════════
-# MikroTik REST API Setup (Minimal)
-# Run on MikroTik Router via WinBox → Terminal
+# MikroTik REST API Setup (Minimal) — WinBox → Terminal
 # ═══════════════════════════════════════════════════════
 
-# 1. Enable HTTPS service on port 443
-/ip service set www-ssl disabled=no port=443
+# 1. Firewall: allow TCP 443 over wg-vps (otherwise REST calls time out)
+:do { /ip firewall filter remove [find comment="Allow REST API over WireGuard"] } on-error={}
+:do { /ip firewall filter add chain=input in-interface=wg-vps protocol=tcp dst-port=443 action=accept place-before=0 comment="Allow REST API over WireGuard" } on-error={ /ip firewall filter add chain=input in-interface=wg-vps protocol=tcp dst-port=443 action=accept comment="Allow REST API over WireGuard" }
 
-# 2. Enable REST API over SSL
-/ip service set api-ssl disabled=no
-
-# 3. Generate self-signed SSL certificate
-:do {
-  /certificate add name=local-cert common-name=router key-size=2048
+# 2. Generate & assign self-signed SSL cert (required — else "sslv3 alert handshake failure")
+:if ([:len [/certificate find name=local-cert]] = 0) do={
+  /certificate add name=local-cert common-name=router days-valid=3650 key-size=2048
   /certificate sign local-cert
-  /ip service set www-ssl certificate=local-cert
-} on-error={
-  :log info "Certificate already exists"
+}
+/ip service set www-ssl certificate=local-cert disabled=no port=443
+:do { /ip service set api-ssl certificate=local-cert disabled=no } on-error={}
+
+# 3. Dedicated API user
+:if ([:len [/user find name="${apiUser}"]] = 0) do={
+  /user add name="${apiUser}" group=full password="${pw}"
+} else={
+  /user set [find name="${apiUser}"] password="${pw}"
 }
 
-# 4. Create a dedicated API user
-:do {
-  /user add name=api-user group=full password="${apiPassword || 'AfricanNet2026!'}"
-} on-error={
-  :log info "User api-user already exists — updating password"
-  /user set [find name=api-user] password="${apiPassword || 'AfricanNet2026!'}"
-}
-
-# 5. Test — from any browser or curl:
-#    https://<ROUTER_IP>:443/rest/system/resource
-#    Login: api-user / ${apiPassword || 'AfricanNet2026!'}
-
-:put "REST API is now active on HTTPS port 443"
-:put "Test URL: https://$(ip address get [find interface=ether1] address)/rest/system/resource"`;
+:put "REST API active on HTTPS 443 — user: ${apiUser}"
+:put "Test inside VPS:  curl -sk -u ${apiUser}:${pw} https://${nextVpnIp}/rest/system/resource"
+:put "Test from PC/App: curl -sk -u ${apiUser}:${pw} https://${cleanVpsHost}:${nextVpsPort}/rest/system/resource"`;
 
   // ═══════════════════════════════════════════════════════
   // WATCHDOG-ONLY SCRIPT
   // ═══════════════════════════════════════════════════════
   const watchdogOnlyScript = `# ═══════════════════════════════════════════════════════
 # Power-Cut Auto-Recovery Watchdog (Standalone)
-# For: ${activeRouterName}
-# Paste into WinBox → Terminal
+# For: ${activeRouterName}   |   WireGuard hub: ${vpsHubIp}
+# Paste into WinBox → Terminal (safe to re-run)
 # ═══════════════════════════════════════════════════════
 
 # 1. Enable Cloud Time Sync (fixes 1970 clock after power loss)
@@ -709,24 +728,22 @@ wg show wg0`;
 
 # 2. Configure NTP with direct IPs (works before DNS resolves)
 :do { /system ntp client set enabled=yes servers=216.239.35.0,1.1.1.1 } on-error={
-  /system ntp client set enabled=yes primary-ntp=216.239.35.0 secondary-ntp=1.1.1.1
+  :do { /system ntp client set enabled=yes primary-ntp=216.239.35.0 secondary-ntp=1.1.1.1 } on-error={}
 }
 
 # 3. Set WireGuard keepalive to prevent NAT mapping timeout
-:do {
-  /interface wireguard peers set [find endpoint-port=51820] persistent-keepalive=25s
-} on-error={}
+:do { /interface wireguard peers set [find interface=wg-vps] persistent-keepalive=25s } on-error={}
 
-# 4. Remove old watchdog (safe to run if none exists)
+# 4. Remove old watchdog (fixes any older script pinging the wrong hub IP)
 :do { /system scheduler remove [find name="an-power-watchdog"] } on-error={}
 :do { /system script remove [find name="an-watchdog-script"] } on-error={}
 
-# 5. Create the recovery script
+# 5. Create the recovery script pointing to hub ${vpsHubIp}
 /system script add name="an-watchdog-script" policy=read,write,test source={
-  :local vpsIp "10.10.10.1"
+  :local vpsIp "${vpsHubIp}"
   :local pingCount [/ping $vpsIp count=2]
   :if ($pingCount = 0) do={
-    :log warning "Watchdog: VPS unreachable. Cycling WireGuard..."
+    :log warning "Watchdog: VPS hub unreachable. Cycling WireGuard..."
     :do {
       /interface wireguard disable [find name="wg-vps"]
       :delay 2s
@@ -735,7 +752,7 @@ wg show wg0`;
     :do { /ip cloud force-update } on-error={}
   }
   :do {
-    /tool fetch url="${appProtocol}//${appHostname}/api/mikrotik/heartbeat?secret=${activeSecret}" mode=https check-certificate=no keep-result=no
+    /tool fetch url="${heartbeatUrl}" mode=https check-certificate=no keep-result=no
   } on-error={}
 }
 
@@ -743,7 +760,7 @@ wg show wg0`;
 /system scheduler add name="an-power-watchdog" start-time=startup interval=60s on-event="/system script run an-watchdog-script" policy=read,write,test
 
 :log info "Power-Cut Auto-Recovery Watchdog installed!"
-:put "✅ Watchdog active! After any future power cut, router reconnects in 30-60 seconds."`;
+:put "Watchdog active (hub ${vpsHubIp}). Router reconnects in 30-60s after power cuts."`;
 
 
   return (
@@ -876,31 +893,31 @@ wg show wg0`;
               code={`
 ┌──────────────────────────────────┐
 │   Vercel (Next.js Cloud App)     │
-│   africannetwork.vercel.app      │
+│   ${appHostname.padEnd(30, ' ')} │
 └──────────┬───────────────────────┘
            │  HTTPS REST API Calls
            ▼
 ┌──────────────────────────────────┐
-│   Hostinger VPS (187.7.22.89)    │
-│   Ubuntu + WireGuard Server      │
+│   Hostinger VPS (${cleanVpsHost})
+│   Ubuntu + WireGuard (${vpsHubIp})
 │                                  │
-│   Port 8443 → 10.10.10.2:443    │  ← Router 1
-│   Port 8730 → 10.10.10.3:443    │  ← Router 2
+│   Port 8443 → ${cleanSubnet}.2:443    │  ← Router 1
+│   Port 8444 → ${cleanSubnet}.3:443    │  ← Router 2
 │   Port ${nextVpsPort}  → ${nextVpnIp}:443    │  ← Router ${nextRouterNumber} (next)
 │                                  │
 │   WireGuard VPN: UDP 51820       │
 └──────────┬───────────────────────┘
-           │  Encrypted WireGuard Tunnel
+           │  Encrypted WireGuard Tunnel (+ wg0 MASQUERADE)
            ▼
 ┌──────────────────────────────────┐
 │   MikroTik Routers               │
-│   (Behind local ISP NAT)         │
+│   (Behind ISP CGNAT / NAT)       │
 │                                  │
-│   Router 1: 10.10.10.2 (VPN)    │
-│   Router 2: 10.10.10.3 (VPN)    │
+│   Router 1: ${cleanSubnet}.2 (VPN)    │
+│   Router 2: ${cleanSubnet}.3 (VPN)    │
 │                                  │
-│   REST API on HTTPS:443          │
-│   Hotspot + Captive Portal       │
+│   Firewall: Allow TCP 443 wg-vps │
+│   REST API on HTTPS:443 (TLS)    │
 └──────────────────────────────────┘`}
             />
 
@@ -921,10 +938,10 @@ wg show wg0`;
                   {routersList.map((r, i) => (
                     <tr key={r.id} style={{ borderBottom: '1px solid #1E293B' }}>
                       <td style={{ padding: '8px 14px' }}>
-                        <code style={{ color: '#F59E0B' }}>{r.port || (8443 + i * 287)}</code>
+                        <code style={{ color: '#F59E0B' }}>{r.port || (8443 + i)}</code>
                       </td>
                       <td style={{ padding: '8px 14px' }}>
-                        <code style={{ color: '#4ADE80' }}>10.10.10.{i + 2}:443</code>
+                        <code style={{ color: '#4ADE80' }}>{cleanSubnet}.{i + 2}:443</code>
                       </td>
                       <td style={{ padding: '8px 14px' }}>
                         {r.status === 'online' ? '🟢' : '🔴'} {r.name} — MikroTik REST API
@@ -1091,14 +1108,14 @@ wg show wg0`;
               marginTop: 10,
             }}>
               {[
-                { icon: '🔒', text: 'REST API on HTTPS:443' },
-                { icon: '👤', text: 'Dedicated API user' },
+                { icon: '🛡️', text: 'Allow TCP 443 over wg-vps' },
+                { icon: '🔐', text: 'Self-signed SSL cert (local-cert)' },
+                { icon: '👤', text: `API user (${apiUser})` },
                 { icon: '☁️', text: 'Cloud DDNS & time sync' },
                 { icon: '🕐', text: 'NTP with direct IPs' },
-                { icon: '🌐', text: 'WireGuard keepalive' },
-                { icon: '⚡', text: 'Auto-recovery watchdog' },
+                { icon: '🌐', text: 'WireGuard 25s keepalive' },
+                { icon: '⚡', text: `Watchdog (${vpsHubIp})` },
                 { icon: '📡', text: 'Boot heartbeat to cloud' },
-                { icon: '🔐', text: 'Self-signed SSL cert' },
               ].map((item, i) => (
                 <div key={i} style={{
                   background: 'rgba(255,255,255,0.04)',
@@ -1130,7 +1147,7 @@ wg show wg0`;
                 <li><strong>WinBox</strong> installed on your computer (<a href="https://mikrotik.com/download" target="_blank" rel="noopener noreferrer" style={{ color: '#60A5FA' }}>Download from MikroTik</a>)</li>
                 <li><strong>Connect to router</strong> via WinBox (MAC or IP address)</li>
                 <li><strong>WireGuard tunnel</strong> already set up between router and VPS (see <span onClick={() => setActiveGuide('add-router')} style={{ color: '#06B6D4', cursor: 'pointer', textDecoration: 'underline' }}>Add New Router</span> guide if not)</li>
-                <li>API Password: Pre-configured below as <code style={{ color: '#34D399', background: '#1E293B', padding: '2px 6px', borderRadius: 4 }}>{apiPassword}</code> — automatically injected into script (no manual editing needed!)</li>
+                <li>API Credentials: Pre-configured below as <code style={{ color: '#38BDF8', background: '#1E293B', padding: '2px 6px', borderRadius: 4 }}>{apiUser}</code> / <code style={{ color: '#34D399', background: '#1E293B', padding: '2px 6px', borderRadius: 4 }}>{pw}</code> — automatically injected!</li>
               </ol>
             </div>
           </CollapsibleSection>
@@ -1169,7 +1186,7 @@ wg show wg0`;
                 <div>
                   <strong style={{ fontSize: 14, color: '#FFFFFF' }}>Copy & Paste the Script</strong>
                   <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#CBD5E1', lineHeight: 1.5 }}>
-                    Click the &quot;📋 Copy&quot; button below → Right-click in the WinBox terminal → Paste
+                    Click &quot;📋 Copy&quot; below → Right-click in WinBox terminal → Paste (wait a few seconds for <code style={{ color: '#4ADE80' }}>progress: done</code> while the SSL cert signs)
                   </p>
                 </div>
               </div>
@@ -1179,15 +1196,14 @@ wg show wg0`;
                 <div>
                   <strong style={{ fontSize: 14, color: '#FFFFFF' }}>Register in Admin Dashboard</strong>
                   <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#CBD5E1', lineHeight: 1.5 }}>
-                    Go to <strong>Locations & Fleet</strong> tab → Add the router with its VPS IP (187.7.22.89), port, and API credentials
+                    Go to <strong>Locations & Fleet</strong> → Click <strong>Add Router</strong> with VPS IP <code style={{ color: '#38BDF8' }}>{cleanVpsHost}</code>, port <code style={{ color: '#F59E0B' }}>{nextVpsPort}</code>, and credentials above
                   </p>
                 </div>
               </div>
             </div>
           </CollapsibleSection>
 
-          {/* The actual script */}
-          {/* Interactive API Password Generator */}
+          {/* Interactive API Credentials Generator */}
           <div style={{
             background: '#0F172A',
             border: '1px solid #1E293B',
@@ -1195,13 +1211,13 @@ wg show wg0`;
             padding: '16px 20px',
             marginBottom: 16,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
               <div>
                 <strong style={{ fontSize: 13.5, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  🔑 REST API Password Configurator
+                  🔑 REST API Credentials Configurator
                 </strong>
                 <span style={{ fontSize: 12, color: '#94A3B8' }}>
-                  The script below will automatically use this password. Just copy and paste into WinBox — no manual editing required!
+                  All scripts below automatically sync with these values — no manual editing needed!
                 </span>
               </div>
               <button
@@ -1224,42 +1240,60 @@ wg show wg0`;
                 🎲 Generate Password
               </button>
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, alignItems: 'center' }}>
               <input
-                type={showApiPassword ? 'text' : 'password'}
-                value={apiPassword}
-                onChange={e => setApiPassword(e.target.value)}
+                type="text"
+                value={apiUsername}
+                onChange={e => setApiUsername(e.target.value)}
                 style={{
-                  flex: 1,
                   background: '#030712',
                   border: '1px solid #334155',
                   borderRadius: 8,
                   padding: '8px 14px',
-                  color: '#34D399',
+                  color: '#38BDF8',
                   fontFamily: 'monospace',
                   fontSize: 14,
                   fontWeight: 700,
                 }}
-                placeholder="Enter password..."
+                placeholder="API Username (e.g. mycollectivesub)"
               />
-              <button
-                type="button"
-                onClick={() => setShowApiPassword(!showApiPassword)}
-                style={{
-                  background: '#1E293B',
-                  border: '1px solid #334155',
-                  borderRadius: 8,
-                  color: '#CBD5E1',
-                  padding: '8px 14px',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                {showApiPassword ? '👁️ Hide' : '👁️ Show'}
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type={showApiPassword ? 'text' : 'password'}
+                  value={apiPassword}
+                  onChange={e => setApiPassword(e.target.value)}
+                  style={{
+                    flex: 1,
+                    background: '#030712',
+                    border: '1px solid #334155',
+                    borderRadius: 8,
+                    padding: '8px 14px',
+                    color: '#34D399',
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                    fontWeight: 700,
+                  }}
+                  placeholder="Enter password..."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiPassword(!showApiPassword)}
+                  style={{
+                    background: '#1E293B',
+                    border: '1px solid #334155',
+                    borderRadius: 8,
+                    color: '#CBD5E1',
+                    padding: '8px 14px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {showApiPassword ? '👁️ Hide' : '👁️ Show'}
+                </button>
+              </div>
             </div>
             <div style={{ fontSize: 11.5, color: '#FBBF24', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>💡</span> <strong>Remember this password!</strong> You will use username <code style={{ color: '#38BDF8' }}>api-user</code> and this password when registering the router in <strong>Locations & Fleet</strong>.
+              <span>💡</span> <strong>Remember these credentials!</strong> Use <code style={{ color: '#38BDF8' }}>{apiUser}</code> / <code style={{ color: '#34D399' }}>{pw}</code> when adding the router in <strong>Locations & Fleet</strong>.
             </div>
           </div>
 
@@ -1281,10 +1315,10 @@ wg show wg0`;
               <span>⚠️</span> Important Reminders
             </strong>
             <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: '#CBD5E1', lineHeight: 1.6 }}>
-              <li>API credentials are automatically set to: <code style={{ color: '#38BDF8' }}>api-user</code> / <code style={{ color: '#34D399' }}>{apiPassword}</code></li>
-              <li>The WireGuard tunnel (<code>wg-vps</code>) must already be configured on the router</li>
-              <li>This script is safe to run multiple times — it won&apos;t duplicate anything</li>
-              <li>After running, register the router in <strong>Locations & Fleet</strong> in the admin dashboard</li>
+              <li>API credentials are automatically set to: <code style={{ color: '#38BDF8' }}>{apiUser}</code> / <code style={{ color: '#34D399' }}>{pw}</code></li>
+              <li>Firewall rule <code style={{ color: '#4ADE80' }}>Allow REST API over WireGuard</code> ensures TCP 443 isn&apos;t silently dropped while ping works</li>
+              <li>Watchdog is pinned to hub IP <code style={{ color: '#38BDF8' }}>{vpsHubIp}</code> so it won&apos;t endlessly restart <code>wg-vps</code></li>
+              <li>Safe to run multiple times — updates existing rules, user password, and watchdog cleanly</li>
             </ul>
           </div>
         </div>
@@ -1297,25 +1331,77 @@ wg show wg0`;
       {activeGuide === 'vps-setup' && (
         <div>
           <CollapsibleSection
-            title="VPS Requirements"
+            title="VPS Requirements & Target Hub"
             icon="📋"
-            subtitle="What you need for the Hostinger VPS"
+            subtitle="Configure your Hostinger VPS public IP & WireGuard subnet"
             color="#34A853"
             defaultOpen={true}
           >
             <div style={{ padding: '0 8px' }}>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 10,
+                marginBottom: 14,
+              }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, color: '#94A3B8', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>
+                    VPS Public IP / Hostname
+                  </label>
+                  <input
+                    type="text"
+                    value={vpsHost}
+                    onChange={e => setVpsHost(e.target.value)}
+                    placeholder="2.25.15.1"
+                    style={{
+                      width: '100%',
+                      background: '#030712',
+                      border: '1px solid #334155',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      color: '#38BDF8',
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      fontSize: 13.5,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, color: '#94A3B8', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>
+                    WireGuard Subnet Prefix (Hub = .1)
+                  </label>
+                  <input
+                    type="text"
+                    value={vpnSubnet}
+                    onChange={e => setVpnSubnet(e.target.value)}
+                    placeholder="10.100.0"
+                    style={{
+                      width: '100%',
+                      background: '#030712',
+                      border: '1px solid #334155',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      color: '#4ADE80',
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      fontSize: 13.5,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                 gap: 10,
               }}>
                 {[
                   { label: 'Provider', value: 'Hostinger VPS' },
-                  { label: 'OS', value: 'Ubuntu 22.04+ LTS' },
-                  { label: 'RAM', value: '1 GB minimum' },
-                  { label: 'Public IP', value: '187.7.22.89' },
-                  { label: 'SSH Access', value: 'Port 22' },
-                  { label: 'WireGuard', value: 'UDP 51820' },
+                  { label: 'OS Supported', value: 'Ubuntu 22.04 / 24.04 / 26.04' },
+                  { label: 'VPS Public IP', value: cleanVpsHost },
+                  { label: 'Hub Tunnel IP', value: `${vpsHubIp}/24` },
+                  { label: 'WireGuard Port', value: 'UDP 51820' },
+                  { label: 'Router API Range', value: 'TCP 8443–8499' },
                 ].map((item, i) => (
                   <div key={i} style={{
                     background: 'rgba(255,255,255,0.03)',
@@ -1330,15 +1416,33 @@ wg show wg0`;
               </div>
 
               <div style={{
-                background: 'rgba(239, 68, 68, 0.06)',
-                border: '1px solid #7F1D1D',
+                background: 'rgba(56, 189, 248, 0.07)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
                 borderRadius: 10,
                 padding: '12px 16px',
                 marginTop: 14,
                 fontSize: 12,
+                color: '#CBD5E1',
+                lineHeight: 1.6,
+              }}>
+                <strong style={{ color: '#38BDF8' }}>✅ Ubuntu 26.04 &amp; Return-Path Fixes Built In:</strong>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  <li>Skips <code>iptables-persistent</code> (conflicts with <code>ufw</code> on Ubuntu 26.04) and persists NAT rules cleanly inside <code>/etc/wireguard/wg0.conf</code>.</li>
+                  <li>Writes <code>net.ipv4.ip_forward=1</code> to <code>/etc/sysctl.d/99-wireguard.conf</code> and sets <code>DEFAULT_FORWARD_POLICY=&quot;ACCEPT&quot;</code> in <code>/etc/default/ufw</code>.</li>
+                  <li>Includes <code>iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE</code> so MikroTik replies return through the tunnel instead of leaking out the router&apos;s ISP WAN.</li>
+                </ul>
+              </div>
+
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.06)',
+                border: '1px solid #7F1D1D',
+                borderRadius: 10,
+                padding: '12px 16px',
+                marginTop: 12,
+                fontSize: 12,
                 color: '#FCA5A5',
               }}>
-                <strong>⚠️ CRITICAL:</strong> Enable <strong>Auto-Renewal</strong> on Hostinger! If the VPS expires, the OS gets completely wiped and all config is lost. You&apos;ll need to run the full restore procedure below.
+                <strong>⚠️ CRITICAL:</strong> Enable <strong>Auto-Renewal</strong> on Hostinger and ensure <strong>UDP 51820</strong> + <strong>TCP 8443–8499</strong> are also open in Hostinger&apos;s Cloud Firewall panel (if enabled).
               </div>
             </div>
           </CollapsibleSection>
@@ -1346,25 +1450,24 @@ wg show wg0`;
           <CollapsibleSection
             title="WireGuard Config File (wg0.conf)"
             icon="🔐"
-            subtitle="/etc/wireguard/wg0.conf on the VPS"
+            subtitle="/etc/wireguard/wg0.conf reference on the VPS"
             color="#C084FC"
             defaultOpen={false}
           >
             <CopyBlock
-              label="📄 WireGuard Server Config Template"
+              label="📄 WireGuard Server Config Reference (auto-generated by script below)"
               language="INI"
               code={wg0ConfTemplate}
             />
             <p style={{ fontSize: 11.5, color: '#CBD5E1', margin: '4px 8px', lineHeight: 1.5 }}>
-              Replace <code style={{ color: '#F59E0B' }}>&lt;VPS_PRIVATE_KEY&gt;</code> and <code style={{ color: '#F59E0B' }}>&lt;ROUTER_X_PUBLIC_KEY&gt;</code> with actual keys.
-              Generate VPS keys with: <code style={{ color: '#4ADE80' }}>wg genkey | tee privatekey | wg pubkey &gt; publickey</code>
+              The setup script below generates keys and writes this file automatically — including <code>POSTROUTING -o wg0 -j MASQUERADE</code>.
             </p>
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Full VPS Setup / Restore Procedure"
+            title="Full VPS Setup / Restore Procedure (1-Paste)"
             icon="🔄"
-            subtitle="Run these commands if VPS is fresh or was wiped"
+            subtitle="Run on a fresh Ubuntu 22.04 / 24.04 / 26.04 VPS as root"
             color="#34A853"
             defaultOpen={true}
           >
@@ -1374,7 +1477,7 @@ wg show wg0`;
                 <div>
                   <strong style={{ fontSize: 14, color: '#FFFFFF' }}>SSH into VPS</strong>
                   <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#CBD5E1' }}>
-                    <code style={{ color: '#4ADE80' }}>ssh root@187.7.22.89</code>
+                    <code style={{ color: '#4ADE80' }}>ssh root@{cleanVpsHost}</code>
                   </p>
                 </div>
               </div>
@@ -1382,9 +1485,9 @@ wg show wg0`;
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16 }}>
                 <StepBadge number={2} color="#34A853" />
                 <div>
-                  <strong style={{ fontSize: 14, color: '#FFFFFF' }}>Write the wg0.conf file</strong>
+                  <strong style={{ fontSize: 14, color: '#FFFFFF' }}>Paste the 1-shot install script below</strong>
                   <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#CBD5E1' }}>
-                    Copy the WireGuard config from above to <code style={{ color: '#4ADE80' }}>/etc/wireguard/wg0.conf</code>
+                    Installs WireGuard, enables forwarding, writes <code style={{ color: '#4ADE80' }}>/etc/wireguard/wg0.conf</code>, and starts <code>wg-quick@wg0</code>.
                   </p>
                 </div>
               </div>
@@ -1392,7 +1495,10 @@ wg show wg0`;
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                 <StepBadge number={3} color="#34A853" />
                 <div>
-                  <strong style={{ fontSize: 14, color: '#FFFFFF' }}>Run this setup script</strong>
+                  <strong style={{ fontSize: 14, color: '#FFFFFF' }}>Copy the printed VPS WireGuard Public Key</strong>
+                  <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#CBD5E1' }}>
+                    Paste it into the <strong>VPS WireGuard Public Key</strong> box in the <strong>Add New Router</strong> tab.
+                  </p>
                 </div>
               </div>
             </div>
@@ -1429,8 +1535,9 @@ wg show wg0`;
                   {[
                     { port: '22', proto: 'TCP', purpose: 'SSH access', cmd: 'ufw allow 22/tcp' },
                     { port: '51820', proto: 'UDP', purpose: 'WireGuard VPN', cmd: 'ufw allow 51820/udp' },
-                    { port: '8443', proto: 'TCP', purpose: 'Router 1 REST API', cmd: 'ufw allow 8443/tcp' },
-                    { port: '8730', proto: 'TCP', purpose: 'Router 2 REST API', cmd: 'ufw allow 8730/tcp' },
+                    { port: '8443', proto: 'TCP', purpose: `Router 1 REST API (${cleanSubnet}.2:443)`, cmd: 'ufw allow 8443/tcp' },
+                    { port: '8444', proto: 'TCP', purpose: `Router 2 REST API (${cleanSubnet}.3:443)`, cmd: 'ufw allow 8444/tcp' },
+                    { port: '8443:8499', proto: 'TCP', purpose: 'Full fleet router range', cmd: 'ufw allow 8443:8499/tcp' },
                   ].map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #1E293B' }}>
                       <td style={{ padding: '8px 14px' }}><code style={{ color: '#F59E0B' }}>{row.port}</code></td>
@@ -1462,12 +1569,13 @@ wg show wg0`;
             <div style={{ padding: '0 8px', fontSize: 13, color: '#CBD5E1', lineHeight: 1.6 }}>
               <p>
                 MikroTik RouterOS 7+ includes a built-in <strong style={{ color: '#C084FC' }}>REST API</strong> that allows
-                external applications to manage the router over HTTPS. This is how the African Network platform
+                external applications to manage the router over HTTPS. This is how the <strong>My Collective Sub</strong> platform
                 creates vouchers, manages sessions, pushes login pages, and monitors router health — all remotely.
               </p>
               <p style={{ marginTop: 8 }}>
-                The REST API is accessed at <code style={{ color: '#4ADE80' }}>https://&lt;ROUTER_IP&gt;:443/rest/...</code>
-                and requires Basic Authentication (username + password).
+                Two router prerequisites are essential so REST calls never time out or fail SSL handshakes:
+                allowing <code style={{ color: '#4ADE80' }}>TCP 443</code> in-interface <code style={{ color: '#38BDF8' }}>wg-vps</code> in the router firewall,
+                and signing a self-signed certificate (<code style={{ color: '#F59E0B' }}>local-cert</code>) assigned to <code>www-ssl</code>.
               </p>
             </div>
           </CollapsibleSection>
@@ -1475,7 +1583,7 @@ wg show wg0`;
           <CollapsibleSection
             title="REST API Setup (Standalone Script)"
             icon="🔧"
-            subtitle="Minimal script to enable REST API only"
+            subtitle="Minimal script to enable firewall rule, SSL cert, and REST API"
             color="#C084FC"
             defaultOpen={true}
           >
@@ -1490,14 +1598,17 @@ wg show wg0`;
                 <StepBadge number={2} color="#C084FC" />
                 <div>
                   <strong style={{ color: '#FFFFFF' }}>Paste the script below</strong>
+                  <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#CBD5E1' }}>
+                    Wait for <code style={{ color: '#4ADE80' }}>progress: done</code> while RouterOS signs the SSL certificate.
+                  </p>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                 <StepBadge number={3} color="#C084FC" />
                 <div>
-                  <strong style={{ color: '#FFFFFF' }}>Test the API</strong>
+                  <strong style={{ color: '#FFFFFF' }}>Test &amp; Save in Dashboard</strong>
                   <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#CBD5E1' }}>
-                    Visit <code style={{ color: '#4ADE80' }}>https://&lt;ROUTER_IP&gt;:443/rest/system/resource</code> in your browser
+                    Test <code style={{ color: '#4ADE80' }}>https://{cleanVpsHost}:{nextVpsPort}/rest/system/resource</code> from your PC (not from inside the VPS itself, since local curls bypass <code>PREROUTING -i eth0</code>). In the dashboard, click <strong>Save</strong> before clicking <strong>Test Connection</strong>!
                   </p>
                 </div>
               </div>
@@ -1511,32 +1622,33 @@ wg show wg0`;
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Testing the REST API"
+            title="Testing & Troubleshooting the REST API"
             icon="🧪"
-            subtitle="How to verify the API is working"
+            subtitle="How to verify both the WireGuard tunnel and external VPS forwarding"
             color="#06B6D4"
             defaultOpen={false}
           >
             <div style={{ padding: '0 8px' }}>
               <CopyBlock
-                label="Test from your computer (curl)"
+                label="Verify from VPS vs External PC (curl)"
                 language="bash"
-                code={`# Replace ROUTER_IP, USERNAME, PASSWORD with your values
-curl -k -u "api-user:YOUR_PASSWORD" https://ROUTER_IP:443/rest/system/resource
+                code={`# 1. Test INSIDE VPS directly to the WireGuard tunnel IP:
+curl -sk -u "${apiUser}:${pw}" https://${nextVpnIp}/rest/system/resource
 
-# Expected output: JSON with router info (uptime, CPU, RAM, etc.)
+# 2. Test OUTSIDE VPS (Windows PowerShell / Vercel) via the forwarded VPS port:
+curl -sk -u "${apiUser}:${pw}" https://${cleanVpsHost}:${nextVpsPort}/rest/system/resource
 
-# Test via VPS tunnel:
-curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resource`}
+# Note: Running curl to ${cleanVpsHost}:${nextVpsPort} FROM INSIDE the VPS returns empty
+# because PREROUTING -i eth0 only matches external incoming traffic.`}
               />
 
               <CopyBlock
-                label="Test from the Admin Dashboard"
+                label="Register & Test in Admin Dashboard"
                 language="text"
-                code={`1. Go to MikroTik Config tab
-2. Enter the Router IP (or VPS IP), Port, Username, Password
-3. Click "Test Connection"
-4. If green "Connected" badge appears — you're all set!`}
+                code={`1. Go to Locations & Fleet -> Add New Router (or MikroTik Config -> Default / Primary Router)
+2. Enter IP: ${cleanVpsHost}, Port: ${nextVpsPort}, User: ${apiUser}, Password: ${pw}, Use SSL: Checked
+3. Click "Save Router" or "Save Configuration" FIRST
+4. Click "Test Connection" — green Online badge confirms end-to-end connectivity!`}
               />
             </div>
           </CollapsibleSection>
@@ -1831,7 +1943,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#F8FAFC', letterSpacing: '-0.3px' }}>
-                      Deploying: {newRouterName || `Branch Router ${nextRouterNumber}`}
+                      Deploying: {newRouterName || `Katsina Hub ${nextRouterNumber}`}
                     </h3>
                     <span style={{
                       fontSize: 11,
@@ -1842,22 +1954,23 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                       color: isRouterConfigFinished ? '#34D399' : '#FBBF24',
                       border: isRouterConfigFinished ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
                     }}>
-                      {isRouterConfigFinished ? '🟢 Config Complete' : '🟡 In Progress (Pending Key)'}
+                      {isRouterConfigFinished ? '🟢 Config Complete (44-char Key Ready)' : '🟡 In Progress (Pending 44-char Key)'}
                     </span>
                   </div>
                   <p style={{ margin: '3px 0 0', fontSize: 13, color: '#94A3B8' }}>
-                    Assigned VPN IP: <code style={{ color: '#38BDF8', fontWeight: 700 }}>{newRouterVpnIp}</code> •
-                    VPS Forwarding Port: <code style={{ color: '#F59E0B', fontWeight: 700 }}>{newRouterVpsPort}</code> •
-                    API User: <code style={{ color: '#34D399', fontWeight: 700 }}>api-user</code>
+                    VPN IP: <code style={{ color: '#38BDF8', fontWeight: 700 }}>{newRouterVpnIp}</code> •
+                    VPS: <code style={{ color: '#F59E0B', fontWeight: 700 }}>{cleanVpsHost}:{newRouterVpsPort}</code> •
+                    API User: <code style={{ color: '#34D399', fontWeight: 700 }}>{apiUser}</code>
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  setNewRouterName(`Branch Router ${nextRouterNumber}`);
+                  setNewRouterName(`Katsina Hub ${nextRouterNumber}`);
                   setNewRouterVpnIp(defaultNextVpnIp);
                   setNewRouterVpsPort(defaultNextVpsPort);
+                  setApiUsername(inferredApiUser);
                   generateRandomPassword();
                 }}
                 style={{
@@ -1894,7 +2007,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   ⚡ New Router Dynamic Synchronizer
                 </strong>
                 <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#94A3B8' }}>
-                  Fill in or customize the router details below. <strong style={{ color: '#38BDF8' }}>All scripts across Phase 1, Phase 2 (VPS), Phase 3, Phase 4, and Phase 5 will automatically update and synchronize in real time!</strong>
+                  Customize the VPS and router details below. <strong style={{ color: '#38BDF8' }}>All scripts across Phases 1–5 update automatically in real time!</strong>
                 </p>
               </div>
             </div>
@@ -2003,7 +2116,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
               gap: 16,
               marginBottom: 16,
             }}>
@@ -2016,7 +2129,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   type="text"
                   value={newRouterName}
                   onChange={e => setNewRouterName(e.target.value)}
-                  placeholder="e.g. Branch Router 3"
+                  placeholder="e.g. Katsina Hub 1"
                   style={{
                     width: '100%',
                     background: '#030712',
@@ -2029,20 +2142,20 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   }}
                 />
                 <span style={{ fontSize: 11, color: '#64748B', marginTop: 4, display: 'block' }}>
-                  Identifier used on VPS and in your Locations & Fleet list.
+                  Identifier used on VPS and in Locations &amp; Fleet.
                 </span>
               </div>
 
-              {/* Field 2: WireGuard VPN IP */}
+              {/* Field 2: VPS Public IP */}
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#CBD5E1', marginBottom: 6 }}>
-                  2. WireGuard Tunnel IP
+                  2. VPS Public IP / Host
                 </label>
                 <input
                   type="text"
-                  value={newRouterVpnIp}
-                  onChange={e => setNewRouterVpnIp(e.target.value)}
-                  placeholder="10.10.10.4"
+                  value={vpsHost}
+                  onChange={e => setVpsHost(e.target.value)}
+                  placeholder="2.25.15.1"
                   style={{
                     width: '100%',
                     background: '#030712',
@@ -2056,20 +2169,47 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   }}
                 />
                 <span style={{ fontSize: 11, color: '#64748B', marginTop: 4, display: 'block' }}>
-                  Private IP inside WireGuard subnet (Router 1 = .2, Router 2 = .3, Router 3 = .4).
+                  Public IPv4 of your Hostinger Ubuntu VPS.
                 </span>
               </div>
 
-              {/* Field 3: VPS Port Forward */}
+              {/* Field 3: WireGuard VPN IP */}
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#CBD5E1', marginBottom: 6 }}>
-                  3. VPS Forwarding Port (External)
+                  3. WireGuard Tunnel IP
+                </label>
+                <input
+                  type="text"
+                  value={newRouterVpnIp}
+                  onChange={e => setNewRouterVpnIp(e.target.value)}
+                  placeholder={`${cleanSubnet}.2`}
+                  style={{
+                    width: '100%',
+                    background: '#030712',
+                    border: '1px solid #334155',
+                    borderRadius: 8,
+                    padding: '9px 12px',
+                    color: '#38BDF8',
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                  }}
+                />
+                <span style={{ fontSize: 11, color: '#64748B', marginTop: 4, display: 'block' }}>
+                  Hub is <code>{vpsHubIp}</code>; Router 1 = <code>{cleanSubnet}.2</code>, Router 2 = <code>{cleanSubnet}.3</code>.
+                </span>
+              </div>
+
+              {/* Field 4: VPS Port Forward */}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#CBD5E1', marginBottom: 6 }}>
+                  4. VPS Forwarding Port (External)
                 </label>
                 <input
                   type="text"
                   value={newRouterVpsPort}
                   onChange={e => setNewRouterVpsPort(e.target.value)}
-                  placeholder="8731"
+                  placeholder="8443"
                   style={{
                     width: '100%',
                     background: '#030712',
@@ -2083,15 +2223,42 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   }}
                 />
                 <span style={{ fontSize: 11, color: '#64748B', marginTop: 4, display: 'block' }}>
-                  Sequential external port (Router 2 = 8730, Router 3 = 8731, Router 4 = 8732).
+                  Sequential port (Router 1 = 8443, Router 2 = 8444, Router 3 = 8445).
                 </span>
               </div>
 
-              {/* Field 4: REST API User Password */}
+              {/* Field 5: REST API Username */}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#CBD5E1', marginBottom: 6 }}>
+                  5. REST API Username
+                </label>
+                <input
+                  type="text"
+                  value={apiUsername}
+                  onChange={e => setApiUsername(e.target.value)}
+                  placeholder="mycollectivesub"
+                  style={{
+                    width: '100%',
+                    background: '#030712',
+                    border: '1px solid #334155',
+                    borderRadius: 8,
+                    padding: '9px 12px',
+                    color: '#34D399',
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                  }}
+                />
+                <span style={{ fontSize: 11, color: '#64748B', marginTop: 4, display: 'block' }}>
+                  Dedicated RouterOS REST API account created in Phase 4.
+                </span>
+              </div>
+
+              {/* Field 6: REST API User Password */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 700, color: '#CBD5E1' }}>
-                    4. REST API Password (api-user)
+                    6. REST API Password ({apiUser})
                   </label>
                   <button
                     type="button"
@@ -2145,12 +2312,12 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   </button>
                 </div>
                 <span style={{ fontSize: 11, color: '#64748B', marginTop: 4, display: 'block' }}>
-                  Baked directly into the Master 1-Shot Config & Locations registration.
+                  Baked directly into Phase 4 Master Config &amp; Locations registration.
                 </span>
               </div>
             </div>
 
-            {/* Field 5 & 6: Public Keys */}
+            {/* Public Keys */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
@@ -2162,13 +2329,13 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
             }}>
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#A78BFA', marginBottom: 4 }}>
-                  🔑 Router WireGuard Public Key (Generated in Phase 1)
+                  🔑 Router WireGuard Public Key (44 chars from Phase 1)
                 </label>
                 <input
                   type="text"
                   value={newRouterPublicKey}
                   onChange={e => setNewRouterPublicKey(e.target.value)}
-                  placeholder="Paste router public key here from Phase 1..."
+                  placeholder="Paste the 44-char public-key from WinBox (e.g. CjuD...=)"
                   style={{
                     width: '100%',
                     background: '#030712',
@@ -2181,19 +2348,19 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   }}
                 />
                 <span style={{ fontSize: 11, color: '#94A3B8', marginTop: 4, display: 'block' }}>
-                  Paste from WinBox Terminal in Phase 1 → Phase 2 VPS script will instantly update!
+                  Run Phase 1 in WinBox first, copy its <code>public-key</code> here → Phase 2 validates it is 44 chars!
                 </span>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#94A3B8', marginBottom: 4 }}>
-                  🌐 VPS WireGuard Public Key (Optional)
+                  🌐 VPS WireGuard Public Key (from /etc/wireguard/server_public.key)
                 </label>
                 <input
                   type="text"
                   value={vpsPublicKey}
                   onChange={e => setVpsPublicKey(e.target.value)}
-                  placeholder="Leave blank or paste VPS public key..."
+                  placeholder="Paste VPS server_public.key..."
                   style={{
                     width: '100%',
                     background: '#030712',
@@ -2206,7 +2373,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   }}
                 />
                 <span style={{ fontSize: 11, color: '#64748B', marginTop: 4, display: 'block' }}>
-                  If blank, placeholder is shown. Found on VPS in /etc/wireguard/server_public.key.
+                  Auto-fills into Phase 3 so your MikroTik connects to <code>{cleanVpsHost}:51820</code>.
                 </span>
               </div>
             </div>
@@ -2218,7 +2385,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
           <CollapsibleSection
             title="Phase 1: Create WireGuard on Router (WinBox Terminal)"
             icon="📡"
-            subtitle="Run on the NEW MikroTik router to generate its unique WireGuard key"
+            subtitle="Single-line RouterOS command (no \\ prompt hangs) to generate the router's WireGuard key"
             color="#C084FC"
             defaultOpen={true}
           >
@@ -2226,7 +2393,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
               <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#E2E8F0', lineHeight: 2 }}>
                 <li>Open <strong>WinBox</strong> and connect to the new router (via MAC address or <code>192.168.88.1</code>).</li>
                 <li>Click <strong>&quot;New Terminal&quot;</strong> in the left sidebar menu.</li>
-                <li>Copy and paste the command block below into the terminal and press <strong>Enter</strong>:</li>
+                <li>Paste the single-line command block below and press <strong>Enter</strong>:</li>
               </ol>
             </div>
 
@@ -2236,10 +2403,10 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
               code={addRouterPhase1Script}
             />
 
-            <GitbookCallout type="tip" title="Copy Public Key to Generator Above">
-              In your WinBox terminal, copy the <code>public-key</code> value that was printed (e.g. <code>p/Xz...=</code>).
-              Paste it into the <strong>&quot;Router WireGuard Public Key&quot;</strong> box in the form above.
-              <strong> Phase 2 below will instantly update with your router&apos;s real public key!</strong>
+            <GitbookCallout type="tip" title="Do Not Confuse Router Key vs VPS Key">
+              Copy the 44-character <code>public-key</code> printed in WinBox (e.g. <code>CjuDBj...=</code>) into
+              the <strong>&quot;Router WireGuard Public Key&quot;</strong> box above.
+              <strong> Never run Phase 2 with a placeholder string</strong> — Phase 2 verifies it is 44 characters before writing to <code>wg0.conf</code>.
             </GitbookCallout>
           </CollapsibleSection>
 
@@ -2249,25 +2416,22 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
           <CollapsibleSection
             title="Phase 2: Register on Hostinger VPS (1-Shot SSH Bash Script)"
             icon="🖥️"
-            subtitle="Zero downtime — authorizes peer live without restarting WireGuard or dropping other routers"
+            subtitle="Zero downtime + return-path wg0 MASQUERADE + wg0.conf persistence (Ubuntu 26.04 ready)"
             color="#34A853"
             defaultOpen={true}
           >
             <div style={{ padding: '0 8px', marginBottom: 14 }}>
               <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#E2E8F0', lineHeight: 2 }}>
                 <li>
-                  Open your computer terminal (PowerShell, Terminal, or PuTTY) and SSH into your VPS:
+                  Open your terminal (PowerShell / Terminal) and SSH into your VPS:
                   <div style={{ margin: '6px 0' }}>
                     <code style={{ color: '#4ADE80', background: '#030712', padding: '4px 10px', borderRadius: 6, fontWeight: 700 }}>
-                      ssh root@187.7.22.89
+                      ssh root@{cleanVpsHost}
                     </code>
                   </div>
                 </li>
                 <li>
-                  Click the <strong>📋 Copy</strong> button below to copy the 1-Shot automated setup script.
-                </li>
-                <li>
-                  Right-click in your VPS SSH terminal to paste and press <strong>Enter</strong>.
+                  Click <strong>📋 Copy</strong> below, paste into your VPS SSH terminal, and press <strong>Enter</strong>.
                 </li>
               </ol>
             </div>
@@ -2278,8 +2442,8 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
               code={addRouterVpsScript}
             />
 
-            <GitbookCallout type="success" title="Zero Downtime Guaranteed">
-              This 1-shot script uses <code>wg set wg0 peer</code> to authorize the new router <strong>live</strong>. It does <strong>NOT restart WireGuard</strong>, so existing online routers (like African Network Wi-Fi on port 8730) will experience <strong>zero downtime</strong>!
+            <GitbookCallout type="success" title="Return-Path Fix & Zero Downtime Built In">
+              Uses <code>wg set wg0 peer</code> so existing routers experience <strong>zero downtime</strong>, applies <code>POSTROUTING -o wg0 -j MASQUERADE</code> so external dashboard connections return through the tunnel cleanly, and persists everything inside <code>wg0.conf</code> (no <code>iptables-persistent</code> needed).
             </GitbookCallout>
           </CollapsibleSection>
 
@@ -2287,27 +2451,27 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
           {/* PHASE 3: MIKROTIK - CONNECT TO VPS & TEST PING         */}
           {/* ═══════════════════════════════════════════════════════ */}
           <CollapsibleSection
-            title="Phase 3: Connect to VPS & Verify Tunnel (WinBox Terminal)"
+            title="Phase 3: Connect to VPS & Trigger Handshake (WinBox Terminal)"
             icon="🔌"
-            subtitle="Assigns VPN IP and initiates the outbound handshake to the VPS Hub"
+            subtitle="Single-line commands assign the tunnel IP and force an immediate WireGuard handshake"
             color="#60A5FA"
             defaultOpen={true}
           >
             <div style={{ padding: '0 8px', marginBottom: 14 }}>
               <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#E2E8F0', lineHeight: 2 }}>
-                <li>Go back to <strong>WinBox → New Terminal</strong> on the new router.</li>
-                <li>Click <strong>📋 Copy</strong> on the script below, paste into the terminal, and press <strong>Enter</strong>:</li>
+                <li>Make sure <strong>VPS WireGuard Public Key</strong> above is filled in (not the router&apos;s own key!).</li>
+                <li>Go back to <strong>WinBox → New Terminal</strong> on the new router, paste, and press <strong>Enter</strong>:</li>
               </ol>
             </div>
 
             <CopyBlock
-              label={`📡 MikroTik — Connect to VPS Hub & Ping Test (${newRouterVpnIp})`}
+              label={`📡 MikroTik — Connect to ${cleanVpsHost}:51820 & Ping ${vpsHubIp}`}
               language="RouterOS Script"
               code={addRouterPhase3Script}
             />
 
-            <GitbookCallout type="info" title="Tunnel Verification">
-              Look at the ping output in WinBox. If you see replies from <code>10.10.10.1</code> (0% packet loss), your WireGuard tunnel is <strong>100% active and connected</strong> to your Hostinger VPS!
+            <GitbookCallout type="info" title="Why MikroTik Must Ping First">
+              Because MikroTik is behind ISP NAT/CGNAT, the VPS cannot initiate to the router until the router sends a packet first. Running <code>/ping {vpsHubIp} count=3</code> from MikroTik brings the handshake up immediately (0% loss = tunnel is LIVE!).
             </GitbookCallout>
           </CollapsibleSection>
 
@@ -2317,7 +2481,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
           <CollapsibleSection
             title="Phase 4: Run Master 1-Shot Config (WinBox Terminal)"
             icon="⚡"
-            subtitle="Configures REST API, SSL cert, direct NTP, Cloud DDNS, and auto-recovery watchdog in 1 paste"
+            subtitle="Opens TCP 443 over wg-vps, signs SSL cert, sets NTP/DDNS, and installs watchdog"
             color="#F59E0B"
             defaultOpen={true}
           >
@@ -2334,7 +2498,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
               }}>
                 <span style={{ fontSize: 20 }}>🔑</span>
                 <span style={{ fontSize: 13, color: '#E2E8F0' }}>
-                  The script below has your API password pre-configured as <code style={{ color: '#34D399', fontWeight: 700 }}>{apiPassword}</code>. No manual file editing required!
+                  Pre-configured for user <code style={{ color: '#38BDF8', fontWeight: 700 }}>{apiUser}</code> with password <code style={{ color: '#34D399', fontWeight: 700 }}>{pw}</code>. Wait a few seconds after pasting until you see <code style={{ color: '#4ADE80' }}>progress: done</code>.
                 </span>
               </div>
 
@@ -2345,17 +2509,17 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
             </div>
 
             <CopyBlock
-              label={`⚡ Master 1-Shot Config for ${newRouterName || 'New Router'} (api-user configured)`}
+              label={`⚡ Master 1-Shot Config for ${newRouterName || 'New Router'} (${apiUser} configured)`}
               language="RouterOS Script"
               code={masterConfigScript}
             />
 
-            <GitbookCallout type="tip" title="What this script just configured">
+            <GitbookCallout type="tip" title="Fixes Built Into Phase 4">
               <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
-                <li>✅ <strong>REST API & SSL:</strong> Active on HTTPS port 443 with user <code>api-user</code></li>
-                <li>✅ <strong>Cloud DDNS & NTP:</strong> Direct IPs (<code>216.239.35.0</code>) ensure instant time sync on boot</li>
-                <li>✅ <strong>WireGuard Keepalive:</strong> 25-second keepalive prevents ISP NAT timeouts</li>
-                <li>✅ <strong>Power-Cut Watchdog:</strong> Reconnects router in 30-60 seconds after power outages</li>
+                <li>🛡️ <strong>Firewall TCP 443 over WireGuard:</strong> Prevents &quot;ping works, HTTPS times out&quot; caused by MikroTik&apos;s default input drop rule.</li>
+                <li>🔐 <strong>Self-Signed SSL Cert (<code>local-cert</code>):</strong> Prevents TLS handshake failures on <code>www-ssl</code>.</li>
+                <li>👤 <strong>REST API User:</strong> Creates/updates <code>{apiUser}</code> in group <code>full</code>.</li>
+                <li>🔋 <strong>Watchdog ({vpsHubIp}):</strong> Pings the real hub IP and auto-recovers 30–60s after power cuts.</li>
               </ul>
             </GitbookCallout>
           </CollapsibleSection>
@@ -2366,13 +2530,13 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
           <CollapsibleSection
             title="Phase 5: Register in Admin Dashboard (Locations & Fleet)"
             icon="🌐"
-            subtitle="Add the router to the fleet in your admin dashboard"
+            subtitle="Save the new router in Supabase before clicking Test Connection"
             color="#38BDF8"
             defaultOpen={true}
           >
             <div style={{ padding: '0 8px', marginBottom: 16 }}>
               <p style={{ margin: '0 0 12px', fontSize: 13, color: '#E2E8F0', lineHeight: 1.6 }}>
-                Open <strong>Locations & Fleet</strong> from the left sidebar and click <strong>➕ Add Location / Router</strong>. Enter these exact values:
+                Open <strong>Locations &amp; Fleet</strong> from the left sidebar and click <strong>➕ Add Router</strong> (always <strong>Save</strong> before clicking <strong>Test Connection</strong>). Enter these exact values:
               </p>
 
               {/* Exact Credentials Cards */}
@@ -2385,14 +2549,14 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                 <div style={{ background: '#030712', border: '1px solid #1E293B', borderRadius: 8, padding: '12px 14px' }}>
                   <span style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Location / Router Name</span>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#F8FAFC', marginTop: 4 }}>
-                    {newRouterName || `Branch Router ${nextRouterNumber}`}
+                    {newRouterName || `Katsina Hub ${nextRouterNumber}`}
                   </div>
                 </div>
 
                 <div style={{ background: '#030712', border: '1px solid #1E293B', borderRadius: 8, padding: '12px 14px' }}>
                   <span style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Host / IP Address</span>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#38BDF8', marginTop: 4, fontFamily: 'monospace' }}>
-                    187.7.22.89
+                    {cleanVpsHost}
                   </div>
                 </div>
 
@@ -2406,7 +2570,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                 <div style={{ background: '#030712', border: '1px solid #1E293B', borderRadius: 8, padding: '12px 14px' }}>
                   <span style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Username</span>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#F8FAFC', marginTop: 4, fontFamily: 'monospace' }}>
-                    api-user
+                    {apiUser}
                   </div>
                 </div>
 
@@ -2417,7 +2581,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                       type="button"
                       onClick={() => {
                         if (typeof navigator !== 'undefined' && navigator.clipboard) {
-                          navigator.clipboard.writeText(apiPassword);
+                          navigator.clipboard.writeText(pw);
                         }
                       }}
                       style={{
@@ -2434,12 +2598,12 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                     </button>
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#34D399', marginTop: 4, fontFamily: 'monospace' }}>
-                    {apiPassword}
+                    {pw}
                   </div>
                 </div>
 
                 <div style={{ background: '#030712', border: '1px solid #1E293B', borderRadius: 8, padding: '12px 14px' }}>
-                  <span style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>SSL & Mode</span>
+                  <span style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>SSL &amp; Mode</span>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#A78BFA', marginTop: 4 }}>
                     Use SSL: Yes • Mode: Direct REST
                   </div>
@@ -2464,7 +2628,7 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                     🚀 1-Click Fast Register in Locations &amp; Fleet
                   </strong>
                   <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94A3B8' }}>
-                    Saves this router profile and opens the Locations &amp; Fleet registration modal with all fields automatically filled in!
+                    Auto-fills {cleanVpsHost}:{newRouterVpsPort}, {apiUser}, and password into the Locations &amp; Fleet registration modal!
                   </p>
                 </div>
                 <button
@@ -2472,19 +2636,22 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
                   onClick={() => {
                     if (!isRouterConfigFinished) {
                       const proceed = confirm(
-                        '⚠️ Note: You have not pasted the Router Public Key in Phase 1 yet.\n\nDo you want to proceed to Locations & Fleet anyway?'
+                        '⚠️ Note: You have not pasted the 44-char Router Public Key in Phase 1 yet.\n\nDo you want to proceed to Locations & Fleet anyway?'
                       );
                       if (!proceed) return;
                     }
                     const preset = {
                       id: 'deploy_' + Date.now(),
-                      name: newRouterName || `Branch Router ${nextRouterNumber}`,
+                      name: newRouterName || `Katsina Hub ${nextRouterNumber}`,
+                      vpsHost: cleanVpsHost,
+                      vpnSubnet: cleanSubnet,
                       vpnIp: newRouterVpnIp,
                       vpsPort: newRouterVpsPort,
-                      password: apiPassword,
+                      apiUsername: apiUser,
+                      password: pw,
                       routerPublicKey: newRouterPublicKey,
                       vpsPublicKey: vpsPublicKey,
-                      isCompleted: true, // User explicitly finished and confirmed
+                      isCompleted: true,
                     };
                     if (typeof window !== 'undefined') {
                       localStorage.setItem('an_selected_import_router', JSON.stringify(preset));
@@ -2516,9 +2683,8 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
               </div>
 
               <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#E2E8F0', lineHeight: 2 }}>
-                <li>Click <strong>&quot;Test Connection&quot;</strong> — the status badge will immediately turn green: <strong style={{ color: '#4ADE80' }}>● Connected (RouterOS v7.x)</strong> with model, CPU load, and uptime!</li>
-                <li>Click <strong>&quot;Save Router&quot;</strong>.</li>
-                <li>That&apos;s it! The router is now in your fleet and can be managed independently for login pages, vouchers, and plans.</li>
+                <li>Click <strong>&quot;Save Router&quot;</strong> first (if you ever see <em>&quot;Failed to save router-specific config&quot;</em> on MikroTik Config after deleting a router, refresh the page <code>F5</code>).</li>
+                <li>Click <strong>&quot;Test Connection&quot;</strong> — the status badge turns green: <strong style={{ color: '#4ADE80' }}>● Online (RouterOS 7.x)</strong>.</li>
               </ol>
             </div>
           </CollapsibleSection>
@@ -2536,14 +2702,14 @@ curl -k -u "api-user:YOUR_PASSWORD" https://187.7.22.89:8443/rest/system/resourc
             </strong>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 8 }}>
               {[
-                `WireGuard interface wg-vps created on router`,
-                `Router public key pasted into form above`,
-                `VPS 1-shot script executed via SSH (port ${newRouterVpsPort})`,
-                `Ping to VPS Hub 10.10.10.1 succeeded (0% loss)`,
-                `Master 1-shot config applied with password: ${apiPassword}`,
-                `Registered in Locations & Fleet (${newRouterName || 'New Router'})`,
-                `Test Connection showed green ● Connected badge`,
-                `Power-cut recovery watchdog verified in WinBox scheduler`,
+                `WireGuard wg-vps created on router (44-char key copied)`,
+                `VPS 1-shot script ran on ${cleanVpsHost} (port ${newRouterVpsPort} + wg0 MASQUERADE)`,
+                `Phase 3 ping from MikroTik to hub ${vpsHubIp} succeeded (0% loss)`,
+                `Phase 4 firewall rule (TCP 443 over wg-vps) & local-cert applied`,
+                `API user "${apiUser}" configured with matching password`,
+                `Registered in Locations & Fleet (${cleanVpsHost}:${newRouterVpsPort})`,
+                `Test Connection showed green ● Online badge`,
+                `Power-cut watchdog verified pinging hub ${vpsHubIp}`,
               ].map((item, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', gap: 10,

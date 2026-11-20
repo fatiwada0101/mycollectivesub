@@ -25,7 +25,7 @@ export default function LoginDesignTab({
 
   const activeTargetRouter = routersList.find(r => r.id === targetRouterId) || null;
 
-  const [portalTemplate, setPortalTemplate] = useState('midnight-glass');
+  const [portalTemplate, setPortalTemplate] = useState('mycollective-blue');
   const [portalConfig, setPortalConfig] = useState({
     logoUrl: '', businessName: '', contactFooter: '', primaryColor: '', buyUrl: '',
   });
@@ -63,7 +63,7 @@ export default function LoginDesignTab({
 
     const targetBuyUrl = portalConfig.buyUrl
       || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : '')
-      || 'https://www.africannetwork.com/packages';
+      || 'https://www.mycollectivesub.si/packages';
 
     const t1 = setTimeout(() => {
       setPortalPushProgress(prev => prev.active && prev.status !== 'error' ? {
@@ -168,11 +168,12 @@ export default function LoginDesignTab({
                   <h3 className="sa-card-title">{'🎨'} Captive Portal Templates</h3>
                   <p className="sa-card-sub">Choose a beautiful login page design for your MikroTik hotspot</p>
                 </div>
-                <span className="sa-badge sa-badge-purple">5 Templates</span>
+                <span className="sa-badge sa-badge-purple">6 Templates</span>
               </div>
 
               <div className="sa-template-gallery">
                 {[
+                  { id: 'mycollective-blue', name: 'My Collective Blue', emoji: '🌐', desc: 'Signature crisp light-blue MYCOLLECTIVESUB portal with plan cards & WhatsApp bar', css: 'linear-gradient(155deg, #f4f9ff 0%, #dceeff 55%, #0088ff 100%)' },
                   { id: 'midnight-glass', name: 'Midnight Glass', emoji: '🌙', desc: 'Dark glassmorphism with frosted card & purple glow', css: 'linear-gradient(135deg, #0f0a1e 0%, #1a1035 50%, #2d1b69 100%)' },
                   { id: 'sunrise-gradient', name: 'Sunrise Gradient', emoji: '🌅', desc: 'Warm orange-to-pink gradient with clean white card', css: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #8b5cf6 100%)' },
                   { id: 'ocean-breeze', name: 'Ocean Breeze', emoji: '🌊', desc: 'Cool teal-blue waves with aqua gradient accents', css: 'linear-gradient(135deg, #0d9488 0%, #0ea5e9 50%, #6366f1 100%)' },
@@ -222,17 +223,17 @@ export default function LoginDesignTab({
                 <div className="sa-field-box">
                   <label>Contact / Footer Text</label>
                   <input value={portalConfig.contactFooter} onChange={e => setPortalConfig({ ...portalConfig, contactFooter: e.target.value })}
-                    placeholder="Call: 0801-234-5678 | WhatsApp: 0901-234-5678" />
+                    placeholder="Call: 08123725673 | WhatsApp: 08038107462" />
                   <span style={{ fontSize: '11px', color: '#71717A', marginTop: 4 }}>Phone, email, or WhatsApp shown at the bottom</span>
                 </div>
                 <div className="sa-field-box">
                   <label>Accent Color</label>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input type="color" value={portalConfig.primaryColor || '#7c3aed'}
+                    <input type="color" value={portalConfig.primaryColor || '#0088ff'}
                       onChange={e => setPortalConfig({ ...portalConfig, primaryColor: e.target.value })}
                       style={{ width: 44, height: 36, padding: 2, borderRadius: 8, border: '2px solid rgba(255,255,255,0.1)', background: 'transparent', cursor: 'pointer' }} />
                     <input value={portalConfig.primaryColor} onChange={e => setPortalConfig({ ...portalConfig, primaryColor: e.target.value })}
-                      placeholder="#7c3aed (auto)" style={{ flex: 1 }} />
+                      placeholder="#0088ff (auto)" style={{ flex: 1 }} />
                   </div>
                   <span style={{ fontSize: '11px', color: '#71717A', marginTop: 4 }}>Override the template's default accent color</span>
                 </div>
@@ -241,7 +242,7 @@ export default function LoginDesignTab({
                   <input
                     value={portalConfig.buyUrl}
                     onChange={e => setPortalConfig({ ...portalConfig, buyUrl: e.target.value })}
-                    placeholder={brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : 'https://www.africannetwork.com/packages'}
+                    placeholder={brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : 'https://www.mycollectivesub.si/packages'}
                   />
                   <span style={{ fontSize: '11px', color: '#71717A', marginTop: 4 }}>
                     The destination URL for the &quot;Buy a Data Plan&quot; button on the hotspot portal. Defaults to your web app&apos;s /packages page.
@@ -325,13 +326,14 @@ export default function LoginDesignTab({
                     try {
                       // Build a static preview by replacing MikroTik variables with demo values
                       const templates = {
+                        'mycollective-blue': 'My Collective Blue',
                         'midnight-glass': 'Midnight Glass',
                         'sunrise-gradient': 'Sunrise Gradient',
                         'ocean-breeze': 'Ocean Breeze',
                         'neon-pulse': 'Neon Pulse',
                         'clean-minimal': 'Clean Minimal',
                       };
-                      const name = portalConfig.businessName || mikrotikForm.wifi_ssid || brandingForm.app_name || 'African Network Wi-Fi';
+                      const name = portalConfig.businessName || mikrotikForm.wifi_ssid || brandingForm.app_name || 'MYCOLLECTIVESUB';
                       const targetBuyUrl = portalConfig.buyUrl
                         || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : '')
                         || 'https://www.africannetwork.com/packages';
@@ -466,7 +468,7 @@ fetch('/api/mikrotik/push-login-page?${params.toString()}')
                   onClick={() => {
                     const targetBuyUrl = portalConfig.buyUrl
                       || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : '')
-                      || 'https://www.africannetwork.com/packages';
+                      || 'https://www.mycollectivesub.si/packages';
                     const params = new URLSearchParams({
                       download: 'true',
                       template_id: portalTemplate,
@@ -489,7 +491,7 @@ fetch('/api/mikrotik/push-login-page?${params.toString()}')
                   onClick={() => {
                     const targetBuyUrl = portalConfig.buyUrl
                       || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : '')
-                      || 'https://www.africannetwork.com/packages';
+                      || 'https://www.mycollectivesub.si/packages';
                     const params = new URLSearchParams({
                       template_id: portalTemplate,
                       wifi_ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',

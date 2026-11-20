@@ -253,7 +253,7 @@ export default function SuperAdminPage() {
   const [cardExporting, setCardExporting] = useState(false);
 
   // Login Design (Portal Templates)
-  const [portalTemplate, setPortalTemplate] = useState('midnight-glass');
+  const [portalTemplate, setPortalTemplate] = useState('mycollective-blue');
   const [portalConfig, setPortalConfig] = useState({
     logoUrl: '', businessName: '', contactFooter: '', primaryColor: '', buyUrl: '',
   });

@@ -71,8 +71,10 @@ export default function LocationsTab({
                 id: p.id || p.name,
                 name: p.name,
                 rawName: p.name,
+                vpsHost: p.vpsHost,
                 vpnIp: p.vpnIp,
                 vpsPort: p.vpsPort,
+                apiUsername: p.apiUsername,
                 password: p.password,
               });
             }
@@ -93,8 +95,10 @@ export default function LocationsTab({
                 id: p.id || 'selected_import',
                 name: `${p.name} (Ready for Deployment)`,
                 rawName: p.name,
+                vpsHost: p.vpsHost,
                 vpnIp: p.vpnIp,
                 vpsPort: p.vpsPort,
+                apiUsername: p.apiUsername,
                 password: p.password,
               });
             }
@@ -110,19 +114,8 @@ export default function LocationsTab({
         if (selectedRaw) {
           const p = JSON.parse(selectedRaw);
           setEditingRouter(null);
-          setRouterForm(prev => ({
-            ...prev,
-            name: p.name || 'Branch Router 3',
-            identity: p.name || 'Branch Router 3',
-            connection_mode: 'direct',
-            ip_address: '187.7.22.89',
-            port: Number(p.vpsPort) || 8731,
-            username: 'api-user',
-            password: p.password || 'AfricanNet2026!',
-            use_ssl: true,
-          }));
+          applyPresetToForm(p);
           setSelectedPresetId(p.id || 'selected_import');
-          setImportedPresetNotice(`✓ Auto-filled credentials for ${p.name} (Port ${p.vpsPort})`);
           setShowRouterModal(true);
         }
       }
@@ -131,24 +124,33 @@ export default function LocationsTab({
     }
   }, [showRouterModal, routers]);
 
+  const applyPresetToForm = (preset) => {
+    const routerName = preset.rawName || preset.name || 'Katsina Hub 1';
+    const username = preset.apiUsername || 'mycollectivesub';
+    const port = Number(preset.vpsPort) || 8443;
+    const host = preset.vpsHost || '2.25.15.1';
+    setRouterForm(prev => ({
+      ...prev,
+      name: routerName,
+      identity: routerName,
+      connection_mode: 'direct',
+      ip_address: host,
+      port,
+      username,
+      password: preset.password || '',
+      use_ssl: true,
+    }));
+    setImportedPresetNotice(`✓ Auto-filled credentials for ${routerName} (${host}:${port}, User: ${username})`);
+    return routerName;
+  };
+
   const handleApplyPreset = (presetId) => {
     setSelectedPresetId(presetId);
     if (!presetId) return;
     const found = docPresets.find(item => item.id === presetId);
     if (found) {
-      setRouterForm(prev => ({
-        ...prev,
-        name: found.rawName || found.name,
-        identity: found.rawName || found.name,
-        connection_mode: 'direct',
-        ip_address: '187.7.22.89',
-        port: Number(found.vpsPort) || 8731,
-        username: 'api-user',
-        password: found.password || 'AfricanNet2026!',
-        use_ssl: true,
-      }));
-      setImportedPresetNotice(`✓ Auto-filled credentials for ${found.rawName || found.name} (Port ${found.vpsPort}, User: api-user)`);
-      showToast?.(`✓ Applied preset for ${found.rawName || found.name}`, 'success');
+      const routerName = applyPresetToForm(found);
+      showToast?.(`✓ Applied preset for ${routerName}`, 'success');
     }
   };
 

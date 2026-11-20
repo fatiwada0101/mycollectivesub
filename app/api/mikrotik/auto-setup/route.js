@@ -7,6 +7,8 @@ import {
   pushHotspotLoginPageToRouter,
   detectHotspotDirectory,
   syncRouterClockAndNtp,
+  resolveHotspotGatewayIp,
+  ensureFirstLoginExpiry,
 } from '@/lib/mikrotik';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { validateAdminAuth, unauthorizedResponse } from '@/lib/admin-auth';
@@ -45,8 +47,10 @@ export async function POST(request) {
     const config = routerId
       ? await getMikroTikConfigForRouter(routerId)
       : await getMikroTikConfig();
-    const hotspotUrl = config.hotspot_url || 'asuktech.net';
-    const wifiSsid = config.wifi_ssid || 'African Network Wi-Fi';
+    const hotspotUrl = config.hotspot_url || 'hotspot.mycollectivesub.net';
+    const wifiSsid = body.wifi_ssid || config.wifi_ssid || 'MYCOLLECTIVESUB Wi-Fi';
+    const explicitWifiSsid = Boolean(body.wifi_ssid);
+    const hotspotGatewayIp = await resolveHotspotGatewayIp(routerId);
 
     // Get hotspot settings
     const { data: hsData } = await supabaseAdmin
@@ -60,20 +64,20 @@ export async function POST(request) {
         'allow-remote-requests': 'yes',
       });
 
-      // Add static DNS mapping for hotspot portal domain
+      // Add static DNS mapping for hotspot portal domain pointing to actual gateway IP
       try {
         const cleanDomain = hotspotUrl.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
         const staticRecords = await mikrotikCall('/rest/ip/dns/static') || [];
-        if (!staticRecords.some(r => r.name === cleanDomain)) {
+        if (cleanDomain && !staticRecords.some(r => r.name === cleanDomain)) {
           await mikrotikCall('/rest/ip/dns/static/add', 'POST', {
             name: cleanDomain,
-            address: '10.5.50.1',
-            comment: 'African Network Hotspot Portal Domain',
+            address: hotspotGatewayIp,
+            comment: 'My Collective Sub Hotspot Portal Domain',
           });
         }
       } catch {}
 
-      results.push({ step: 'DNS & Portal Resolution', status: 'ok', detail: `Set 8.8.8.8, 1.1.1.1 with remote requests + static mapping for "${hotspotUrl}"` });
+      results.push({ step: 'DNS & Portal Resolution', status: 'ok', detail: `Set 8.8.8.8, 1.1.1.1 with remote requests + static mapping -> ${hotspotGatewayIp}` });
     } catch (e) {
       results.push({ step: 'DNS & Portal Resolution', status: 'warn', detail: e.message });
     }
@@ -136,10 +140,12 @@ export async function POST(request) {
       if (wifiInterfaces && wifiInterfaces.length > 0) {
         // New WiFi (RouterOS v7.13+)
         for (const iface of wifiInterfaces) {
+          const curSsid = iface['configuration.ssid'] || iface.ssid || '';
+          const nextSsid = (explicitWifiSsid || !curSsid || /^mikrotik/i.test(curSsid)) ? wifiSsid : curSsid;
           try {
             await mikrotikCall('/rest/interface/wifi/set', 'POST', {
               '.id': iface['.id'],
-              'configuration.ssid': wifiSsid,
+              'configuration.ssid': nextSsid,
               'security.authentication-types': '',
               'security.passphrase': '',
             });
@@ -147,12 +153,12 @@ export async function POST(request) {
             try {
               await mikrotikCall('/rest/interface/wifi/set', 'POST', {
                 '.id': iface['.id'],
-                'configuration.ssid': wifiSsid,
+                'configuration.ssid': nextSsid,
               });
             } catch {}
           }
         }
-        results.push({ step: 'WiFi SSID & Open Security', status: 'ok', detail: `"${wifiSsid}" set as OPEN (no password) on ${wifiInterfaces.length} WiFi interface(s)` });
+        results.push({ step: 'WiFi SSID & Open Security', status: 'ok', detail: `Open security verified on ${wifiInterfaces.length} WiFi interface(s)` });
       } else {
         // Try legacy wireless (/interface/wireless)
         let wirelessInterfaces = [];
@@ -162,23 +168,25 @@ export async function POST(request) {
 
         if (wirelessInterfaces && wirelessInterfaces.length > 0) {
           for (const iface of wirelessInterfaces) {
+            const curSsid = iface.ssid || '';
+            const nextSsid = (explicitWifiSsid || !curSsid || /^mikrotik/i.test(curSsid)) ? wifiSsid : curSsid;
             try {
               await mikrotikCall('/rest/interface/wireless/set', 'POST', {
                 '.id': iface['.id'],
-                ssid: wifiSsid,
+                ssid: nextSsid,
                 'security-profile': 'asuk-open',
               });
             } catch {
               try {
                 await mikrotikCall('/rest/interface/wireless/set', 'POST', {
                   '.id': iface['.id'],
-                  ssid: wifiSsid,
+                  ssid: nextSsid,
                   'security-profile': 'default',
                 });
               } catch {}
             }
           }
-          results.push({ step: 'WiFi SSID & Open Security', status: 'ok', detail: `"${wifiSsid}" set as OPEN (no password) on ${wirelessInterfaces.length} wireless interface(s)` });
+          results.push({ step: 'WiFi SSID & Open Security', status: 'ok', detail: `Open security verified on ${wirelessInterfaces.length} wireless interface(s)` });
         } else {
           results.push({ step: 'WiFi SSID', status: 'info', detail: 'No internal WiFi found — external Access Points should have security set to OPEN (no password)' });
         }
@@ -200,39 +208,41 @@ export async function POST(request) {
     } catch {}
 
     let profilesUpdated = 0;
+    const activeDnsNames = new Set([hotspotUrl.toLowerCase(), 'asuktech.net']);
     if (serverProfiles.length > 0) {
       for (const sp of serverProfiles) {
+        const spAddr = (sp['hotspot-address'] && sp['hotspot-address'] !== '0.0.0.0') ? sp['hotspot-address'] : hotspotGatewayIp;
+        const spDns = sp['dns-name'] || hotspotUrl;
+        if (spDns) activeDnsNames.add(spDns.toLowerCase());
+        const spPatch = {
+          'dns-name': spDns,
+          'login-by': 'cookie,http-chap,http-pap',
+          'http-cookie-lifetime': '1d',
+          'hotspot-address': spAddr,
+          'html-directory': targetDir,
+        };
         try {
           const res = await mikrotikCall('/rest/ip/hotspot/profile/set', 'POST', {
             '.id': sp['.id'],
-            'dns-name': hotspotUrl,
-            'login-by': 'cookie,http-chap,http-pap,mac-cookie',
-            'http-cookie-lifetime': '3d',
-            'hotspot-address': '10.5.50.1',
-            'html-directory': targetDir,
+            ...spPatch,
           });
 
           if (!res.ok && sp['.id']) {
-            await mikrotikCall(`/rest/ip/hotspot/profile/${encodeURIComponent(sp['.id'])}`, 'PATCH', {
-              'dns-name': hotspotUrl,
-              'login-by': 'cookie,http-chap,http-pap,mac-cookie',
-              'hotspot-address': '10.5.50.1',
-              'html-directory': targetDir,
-            });
+            await mikrotikCall(`/rest/ip/hotspot/profile/${encodeURIComponent(sp['.id'])}`, 'PATCH', spPatch);
           }
           profilesUpdated++;
         } catch {}
       }
-      results.push({ step: 'Hotspot Portal Domain', status: 'ok', detail: `"${hotspotUrl}" set on ${profilesUpdated} server profile(s) (Storage: ${targetDir}, Auth: PAP/CHAP/Cookie)` });
+      results.push({ step: 'Hotspot Portal Domain', status: 'ok', detail: `Updated ${profilesUpdated} server profile(s) (Gateway: ${hotspotGatewayIp}, Storage: ${targetDir}, Auth: PAP/CHAP/Cookie)` });
     } else {
       // Create a new server profile
       try {
         await mikrotikCall('/rest/ip/hotspot/profile/add', 'POST', {
           name: 'asuk-profile',
           'dns-name': hotspotUrl,
-          'login-by': 'cookie,http-chap,http-pap,mac-cookie',
-          'http-cookie-lifetime': '3d',
-          'hotspot-address': '10.5.50.1',
+          'login-by': 'cookie,http-chap,http-pap',
+          'http-cookie-lifetime': '1d',
+          'hotspot-address': hotspotGatewayIp,
           'html-directory': targetDir,
         });
         results.push({ step: 'Hotspot Portal Domain', status: 'ok', detail: `Created server profile "asuk-profile" with domain "${hotspotUrl}" (Storage: ${targetDir})` });
@@ -293,64 +303,58 @@ export async function POST(request) {
       }
     } catch {}
 
-    // Check if IP pool exists
+    // Check if IP pool, bridge IP, and DHCP server already exist (preserve existing LAN subnet like 192.168.88.1/24)
     let pools = [];
-    try {
-      pools = await mikrotikCall('/rest/ip/pool') || [];
-    } catch {}
-
-    const poolName = 'hs-pool-1';
-    if (!pools.find(p => p.name === poolName)) {
-      try {
-        await mikrotikCall('/rest/ip/pool/add', 'POST', {
-          name: poolName,
-          ranges: '10.5.50.2-10.5.50.254',
-        });
-      } catch {}
-    }
-
-    // Add IP address to bridge for hotspot
-    try {
-      const addrs = await mikrotikCall('/rest/ip/address') || [];
-      if (!addrs.find(a => a.address && a.address.startsWith('10.5.50.'))) {
-        await mikrotikCall('/rest/ip/address/add', 'POST', {
-          address: '10.5.50.1/24',
-          interface: bridgeName,
-        });
-      }
-    } catch {}
-
-    // Check/create DHCP server
+    let addrs = [];
     let dhcpServers = [];
-    try {
-      dhcpServers = await mikrotikCall('/rest/ip/dhcp-server') || [];
-    } catch {}
-
-    if (!dhcpServers.find(d => d.name === 'dhcp-hs')) {
-      try {
-        await mikrotikCall('/rest/ip/dhcp-server/add', 'POST', {
-          name: 'dhcp-hs',
-          interface: bridgeName,
-          'address-pool': poolName,
-          disabled: 'no',
-        });
-      } catch {}
-
-      // Add DHCP network
-      try {
-        await mikrotikCall('/rest/ip/dhcp-server/network/add', 'POST', {
-          address: '10.5.50.0/24',
-          gateway: '10.5.50.1',
-          'dns-server': '10.5.50.1',
-        });
-      } catch {}
-    }
-
-    // Check/Create Hotspot Server
     let hotspotServers = [];
-    try {
-      hotspotServers = await mikrotikCall('/rest/ip/hotspot') || [];
-    } catch {}
+    try { pools = await mikrotikCall('/rest/ip/pool') || []; } catch {}
+    try { addrs = await mikrotikCall('/rest/ip/address') || []; } catch {}
+    try { dhcpServers = await mikrotikCall('/rest/ip/dhcp-server') || []; } catch {}
+    try { hotspotServers = await mikrotikCall('/rest/ip/hotspot') || []; } catch {}
+
+    const bridgeHasIp = addrs.some(a => a.interface === bridgeName && a.address && !a.address.startsWith('10.100.'));
+    const hasDhcpOnBridge = dhcpServers.some(d => d.interface === bridgeName && d.disabled !== 'true');
+    const poolName = 'hs-pool-1';
+
+    if (!bridgeHasIp && hotspotServers.length === 0) {
+      if (!pools.find(p => p.name === poolName)) {
+        try {
+          await mikrotikCall('/rest/ip/pool/add', 'POST', {
+            name: poolName,
+            ranges: '10.5.50.2-10.5.50.254',
+          });
+        } catch {}
+      }
+
+      try {
+        if (!addrs.find(a => a.address && a.address.startsWith('10.5.50.'))) {
+          await mikrotikCall('/rest/ip/address/add', 'POST', {
+            address: '10.5.50.1/24',
+            interface: bridgeName,
+          });
+        }
+      } catch {}
+
+      if (!hasDhcpOnBridge && !dhcpServers.find(d => d.name === 'dhcp-hs')) {
+        try {
+          await mikrotikCall('/rest/ip/dhcp-server/add', 'POST', {
+            name: 'dhcp-hs',
+            interface: bridgeName,
+            'address-pool': poolName,
+            disabled: 'no',
+          });
+        } catch {}
+
+        try {
+          await mikrotikCall('/rest/ip/dhcp-server/network/add', 'POST', {
+            address: '10.5.50.0/24',
+            gateway: '10.5.50.1',
+            'dns-server': '10.5.50.1',
+          });
+        } catch {}
+      }
+    }
 
     if (hotspotServers.length > 0) {
       results.push({
@@ -397,7 +401,7 @@ export async function POST(request) {
     const { data: plans } = await supabaseAdmin
       .from('plans').select('*').eq('active', true).order('sort_order');
 
-    let created = 0, updated = 0;
+    let created = 0, updated = 0, expirySynced = 0;
     for (const plan of (plans || [])) {
       const uploadSpeed = plan.upload_speed || hsSettings.default_upload_speed || '12M';
       const downloadSpeed = plan.download_speed || hsSettings.default_download_speed || '12M';
@@ -412,6 +416,8 @@ export async function POST(request) {
             '.id': existing['.id'],
             'rate-limit': rateLimit,
             'shared-users': sharedUsers,
+            'keepalive-timeout': '00:02:00',
+            'add-mac-cookie': 'false',
           });
           updated++;
         } catch {}
@@ -421,15 +427,21 @@ export async function POST(request) {
             name: plan.name,
             'rate-limit': rateLimit,
             'shared-users': sharedUsers,
+            'keepalive-timeout': '00:02:00',
+            'add-mac-cookie': 'false',
           });
           created++;
         } catch {}
       }
+      try {
+        await ensureFirstLoginExpiry(plan.name, routerId);
+        expirySynced++;
+      } catch {}
     }
     results.push({
       step: 'Hotspot User Profiles',
       status: 'ok',
-      detail: `${created} created, ${updated} updated from ${(plans || []).length} active plans`,
+      detail: `${created} created, ${updated} updated from ${(plans || []).length} active plans (${expirySynced} with first-login expiry enforced)`,
     });
 
     // ═══ Step 6: Walled Garden — allow login page & payment domains before auth ═══
@@ -581,14 +593,17 @@ export async function POST(request) {
       // Exclude router's own domain or IP from walled garden list
       const walledGardenDomains = rawWalledGardenDomains.filter(d => {
         const lower = String(d || '').toLowerCase();
-        return !lower.includes('asuktech.net') && !lower.includes(hotspotUrl.toLowerCase()) && !lower.includes('10.5.50.');
+        for (const ownDomain of activeDnsNames) {
+          if (ownDomain && lower.includes(ownDomain)) return false;
+        }
+        return !lower.includes('10.5.50.') && !lower.includes(hotspotGatewayIp.toLowerCase());
       });
 
       // CRITICAL FOR IOS/ANDROID CAPTIVE POPUP DETECTION & PROXY LOOP PREVENTION:
       // 1. Remove captive probe domains (iPhones/Androids suppress captive popup if probe is allowed)
       // 2. Remove router's own hotspot domain/IP (prevents HttpProxy connection refused loop)
       const captiveProbeDomains = ['captive.apple.com', 'connectivitycheck.gstatic.com', '*.msftconnecttest.com', 'msftconnecttest.com'];
-      const hotspotOwnDomains = ['asuktech.net', hotspotUrl.toLowerCase(), '10.5.50.1'];
+      const hotspotOwnDomains = [...activeDnsNames, hotspotGatewayIp.toLowerCase(), '10.5.50.1'];
 
       for (const entry of existingWG) {
         const host = (entry['dst-host'] || '').toLowerCase();
@@ -695,15 +710,15 @@ export async function POST(request) {
       const defaultBuyUrl = savedPortalConfig.buyUrl
         || (savedBrandingConfig.app_url ? `${savedBrandingConfig.app_url.replace(/\/+$/, '')}/packages` : '')
         || (process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')}/packages` : '')
-        || 'https://www.asuk.tech/packages';
+        || 'https://www.mycollectivesub.si/packages';
 
-      const selectedTemplateId = body.template_id || savedPortalConfig.templateId || 'midnight-glass';
+      const selectedTemplateId = body.template_id || savedPortalConfig.templateId || 'mycollective-blue';
 
       const pushResult = await pushHotspotLoginPageToRouter({
         templateId: selectedTemplateId,
-        wifiSsid: wifiSsid || 'African Network Wi-Fi',
+        wifiSsid: wifiSsid || 'MYCOLLECTIVESUB Wi-Fi',
         buyUrl: defaultBuyUrl,
-        businessName: savedPortalConfig.businessName || savedBrandingConfig.app_name || wifiSsid || 'African Network Wi-Fi',
+        businessName: savedPortalConfig.businessName || savedBrandingConfig.app_name || wifiSsid || 'MYCOLLECTIVESUB',
         logoUrl: savedPortalConfig.logoUrl || savedBrandingConfig.logo_url || '',
         contactFooter: savedPortalConfig.contactFooter || '',
         primaryColor: savedPortalConfig.primaryColor || '',
