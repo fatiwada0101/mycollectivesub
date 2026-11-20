@@ -35,6 +35,7 @@ function WalletContent() {
   const { appName } = useBranding();
   const topupProcessingRef = useRef(false);
   const monnifyCheckoutOpenRef = useRef(false);
+  const topupRedirectHandledRef = useRef('');
   const [pendingMonnifyTopup, setPendingMonnifyTopup] = useState(null);
   useEffect(() => {
     try { setPendingMonnifyTopup(user?.id ? JSON.parse(sessionStorage.getItem(`monnify-topup-${user.id}`) || 'null') : null); } catch {}
@@ -44,13 +45,44 @@ function WalletContent() {
 
   // Handle redirect back from Flutterwave (mobile / USSD payments don't fire the JS callback)
   useEffect(() => {
-    if (searchParams?.get('deposit') === 'success' && user) {
-      showToast('✅ Payment received! Your balance will update shortly.');
-      refreshWallet();
-      fetchTransactions();
-      // Clean the URL without reloading the page
+    const depositParam = searchParams?.get('deposit');
+    const redirectStatus = (searchParams?.get('status') || '').toLowerCase();
+    const redirectTxId = searchParams?.get('transaction_id') || searchParams?.get('transactionId') || '';
+    const redirectTxRef = searchParams?.get('tx_ref') || '';
+    const redirectAmount = Number(searchParams?.get('amount') || 0);
+
+    if (!user || (depositParam !== 'success' && !redirectTxId)) return;
+
+    const redirectKey = `${user.id}:${redirectTxRef}:${redirectTxId}:${depositParam}:${redirectStatus}`;
+    if (topupRedirectHandledRef.current === redirectKey) return;
+    topupRedirectHandledRef.current = redirectKey;
+
+    if (typeof window !== 'undefined') {
       window.history.replaceState({}, '', '/wallet');
     }
+
+    if (redirectStatus === 'cancelled' || redirectStatus === 'failed') {
+      showToast('Payment was cancelled or failed');
+      return;
+    }
+
+    if (redirectTxId) {
+      let savedTopup = null;
+      try {
+        savedTopup = JSON.parse(sessionStorage.getItem(`flw-topup-${user.id}`) || 'null');
+      } catch {}
+      const resolvedAmount = redirectAmount > 0 ? redirectAmount : Number(savedTopup?.amount || 0);
+      const resolvedRef = redirectTxRef || savedTopup?.tx_ref;
+
+      if (resolvedAmount > 0) {
+        finalizeTopup(resolvedAmount, resolvedRef, redirectTxId, 'flutterwave');
+        return;
+      }
+    }
+
+    showToast('✅ Payment received! Your balance will update shortly.');
+    refreshWallet();
+    fetchTransactions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, user]);
 
@@ -321,6 +353,11 @@ function WalletContent() {
     }
 
     const txRef = `FLW_TOPUP_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const redirectOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+    let flwVerificationStarted = false;
+    try {
+      sessionStorage.setItem(`flw-topup-${user.id}`, JSON.stringify({ amount: depositNum, tx_ref: txRef }));
+    } catch {}
 
     window.FlutterwaveCheckout({
       public_key: flwConfig.publicKey,
@@ -329,8 +366,8 @@ function WalletContent() {
       currency: 'NGN',
       payment_options: 'card,banktransfer,ussd',
       // redirect_url: Flutterwave redirects here on mobile/USSD instead of firing the JS callback.
-      // The wallet page re-fetches the balance on mount, so the deposit will reflect automatically.
-      redirect_url: `${window.location.origin}/wallet?deposit=success`,
+      // The wallet page verifies transaction_id via finalizeTopup and refreshes balance.
+      redirect_url: `${redirectOrigin}/wallet?deposit=success&amount=${encodeURIComponent(depositNum)}`,
       customer: {
         email: user?.email || 'customer@mycollectivesub.com',
         phone_number: user?.user_metadata?.phone || '08000000000',
@@ -345,6 +382,8 @@ function WalletContent() {
         description: `Credit ${formatPrice(depositNum)} to your Wi-Fi wallet`,
       },
       callback: async function (response) {
+        if (flwVerificationStarted) return;
+        flwVerificationStarted = true;
         if (response.status === 'successful' || response.status === 'completed') {
           const transactionId = response.transaction_id || response.id;
           await finalizeTopup(depositNum, txRef, transactionId, 'flutterwave');
@@ -388,6 +427,8 @@ function WalletContent() {
       if (gw === 'monnify') {
         setPendingMonnifyTopup(null);
         try { sessionStorage.removeItem(`monnify-topup-${user.id}`); } catch {}
+      } else if (gw === 'flutterwave') {
+        try { sessionStorage.removeItem(`flw-topup-${user.id}`); } catch {}
       }
 
       await refreshWallet();

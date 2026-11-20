@@ -8,6 +8,73 @@ import { validateBody, verifyPaymentSchema } from '@/lib/schemas';
 import { logger } from '@/lib/logger';
 import { sendVoucherSms } from '@/lib/sms';
 
+async function verifyFlutterwaveTransaction(transactionId, txRef) {
+  let secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+  try {
+    const { data: flwSetting } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'flutterwave')
+      .maybeSingle();
+
+    if (flwSetting?.value?.secret_key) {
+      secretKey = flwSetting.value.secret_key.trim();
+    }
+  } catch (e) {
+    console.warn('Could not read flutterwave setting from DB:', e.message);
+  }
+
+  if (!secretKey) {
+    return {
+      errorResponse: NextResponse.json({
+        error: 'Payment verification is not available because Flutterwave Secret Key is not configured on the server. Please contact administrator.',
+      }, { status: 503 }),
+    };
+  }
+
+  try {
+    const flwRes = await fetch(`https://api.flutterwave.com/v3/transactions/${encodeURIComponent(String(transactionId))}/verify`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!flwRes.ok) {
+      return {
+        errorResponse: NextResponse.json({ error: 'Failed to verify payment with payment gateway' }, { status: 400 }),
+      };
+    }
+
+    const flwData = await flwRes.json();
+    if (flwData.status !== 'success' || flwData.data?.status !== 'successful') {
+      return {
+        errorResponse: NextResponse.json({ error: 'Payment was not successful or was declined' }, { status: 400 }),
+      };
+    }
+
+    if (flwData.data?.tx_ref && txRef && flwData.data.tx_ref !== txRef) {
+      return {
+        errorResponse: NextResponse.json({ error: 'Payment transaction reference mismatch' }, { status: 400 }),
+      };
+    }
+
+    if (flwData.data?.currency && flwData.data.currency !== 'NGN') {
+      return {
+        errorResponse: NextResponse.json({ error: 'Invalid currency for transaction' }, { status: 400 }),
+      };
+    }
+
+    return { data: flwData.data };
+  } catch (flwErr) {
+    console.error('Flutterwave verify error:', flwErr);
+    return {
+      errorResponse: NextResponse.json({ error: 'Unable to verify payment with gateway: ' + flwErr.message }, { status: 502 }),
+    };
+  }
+}
+
 export async function POST(request) {
   try {
     const { data: body, error: validationError } = await validateBody(verifyPaymentSchema, request);
@@ -25,7 +92,6 @@ export async function POST(request) {
         return NextResponse.json({ error: error.message }, { status: error.status || 503 });
       }
     }
-    const numericPrice = Number(price);
 
     // ── IDEMPOTENCY GUARD: prevent double-issue if same tx_ref is submitted twice ──
     // (can happen via webhook retry, network error, or rapid double-submit)
@@ -55,20 +121,82 @@ export async function POST(request) {
       }
     }
 
+    // 1. Determine active gateway and verify with Flutterwave upfront if plan metadata is needed
+    let activeGateway = gateway || 'flutterwave';
+    try {
+      const { data: gwSetting } = await supabaseAdmin
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'payment_gateway')
+        .maybeSingle();
+      if (!gateway && gwSetting?.value?.active) {
+        activeGateway = gwSetting.value.active;
+      }
+    } catch (e) {}
 
-    // 1. Fetch authoritative plan details directly from DB (prevents price/speed tampering)
-    const planQuery = plan_id
-      ? supabaseAdmin.from('plans').select('*').eq('id', plan_id).maybeSingle()
-      : supabaseAdmin.from('plans').select('*').eq('name', plan_name).maybeSingle();
+    if (activeGateway === 'monnify') {
+      return NextResponse.json({ error: 'Initialize a Monnify order before verification' }, { status: 400 });
+    }
 
-    const { data: planData } = await planQuery;
+    const verifiedFlw = await verifyFlutterwaveTransaction(transaction_id, tx_ref);
+    if (verifiedFlw.errorResponse) {
+      return verifiedFlw.errorResponse;
+    }
+
+    const flwTx = verifiedFlw.data || {};
+    const flwMeta = flwTx.meta || {};
+    const effectiveTxRef = tx_ref || flwTx.tx_ref || null;
+    if (!tx_ref && effectiveTxRef) {
+      try {
+        const { data: existingByFlwRef } = await supabaseAdmin
+          .from('vouchers')
+          .select('voucher_code, profile_name, price')
+          .eq('tx_ref', effectiveTxRef)
+          .maybeSingle();
+
+        if (existingByFlwRef) {
+          return NextResponse.json({
+            success: true,
+            voucher_code: existingByFlwRef.voucher_code,
+            plan: existingByFlwRef.profile_name,
+            price: existingByFlwRef.price,
+            is_fallback: false,
+            idempotent: true,
+          });
+        }
+      } catch {}
+    }
+    const resolvedPlanId = plan_id || flwMeta.plan_id || flwMeta.planId;
+    const resolvedPlanName = plan_name || flwMeta.plan_name || flwMeta.planName;
+
+    // 2. Fetch authoritative plan details directly from DB (prevents price/speed tampering)
+    const planQuery = resolvedPlanId
+      ? supabaseAdmin.from('plans').select('*').eq('id', resolvedPlanId).maybeSingle()
+      : resolvedPlanName
+        ? supabaseAdmin.from('plans').select('*').eq('name', resolvedPlanName).maybeSingle()
+        : null;
+
+    const { data: planData } = planQuery ? await planQuery : { data: null };
     if (!planData) {
       return NextResponse.json({ error: 'Selected internet plan was not found in catalog' }, { status: 400 });
     }
 
     const authoritativePrice = Number(planData.price);
-    const effectivePlanName = planData.name || plan_name;
+    const paidAmount = Number(flwTx.amount || 0);
+    if (paidAmount < authoritativePrice) {
+      return NextResponse.json({ error: `Payment amount (₦${paidAmount}) does not match plan price (₦${authoritativePrice})` }, { status: 400 });
+    }
+
+    const effectivePlanName = planData.name || resolvedPlanName;
     const effectiveDuration = planData.duration || duration || '24h';
+    let effectiveUserId = user_id || flwMeta.user_id || flwMeta.userId || null;
+    if (!effectiveUserId) {
+      const authUser = await validateUserAuth(request).catch(() => null);
+      effectiveUserId = authUser?.id || null;
+    }
+    const effectiveEmail = email || flwTx.customer?.email || '';
+    const effectivePhone = phone || flwTx.customer?.phone_number || '';
+    const effectiveAutoRenew = auto_renew !== undefined ? !!auto_renew : (flwMeta.auto_renew === true || flwMeta.auto_renew === 'true');
     let planDevices = Number(planData.devices) || 1;
     const planUploadSpeed = planData.upload_speed || '12M';
     const planDownloadSpeed = planData.download_speed || '12M';
@@ -88,82 +216,6 @@ export async function POST(request) {
         expiryMode = hsData.value.expiry_mode || 'elapsed';
       }
     } catch (e) {}
-
-    // 2. Determine which payment gateway to verify against
-    let activeGateway = gateway || 'flutterwave';
-    try {
-      const { data: gwSetting } = await supabaseAdmin
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'payment_gateway')
-        .maybeSingle();
-      if (!gateway && gwSetting?.value?.active) {
-        activeGateway = gwSetting.value.active;
-      }
-    } catch (e) {}
-
-    // 3. Verify payment with the appropriate gateway
-    if (activeGateway === 'monnify') {
-      return NextResponse.json({ error: 'Initialize a Monnify order before verification' }, { status: 400 });
-    }
-    {
-      // ── FLUTTERWAVE VERIFICATION ──
-      let secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
-      try {
-        const { data: flwSetting } = await supabaseAdmin
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'flutterwave')
-          .maybeSingle();
-
-        if (flwSetting?.value?.secret_key) {
-          secretKey = flwSetting.value.secret_key.trim();
-        }
-      } catch (e) {
-        console.warn('Could not read flutterwave setting from DB:', e.message);
-      }
-
-      if (!secretKey) {
-        return NextResponse.json({
-          error: 'Payment verification is not available because Flutterwave Secret Key is not configured on the server. Please contact administrator.',
-        }, { status: 503 });
-      }
-
-      try {
-        const flwRes = await fetch(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${secretKey}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!flwRes.ok) {
-          return NextResponse.json({ error: 'Failed to verify payment with payment gateway' }, { status: 400 });
-        }
-
-        const flwData = await flwRes.json();
-        if (flwData.status !== 'success' || flwData.data?.status !== 'successful') {
-          return NextResponse.json({ error: 'Payment was not successful or was declined' }, { status: 400 });
-        }
-
-        const paidAmount = Number(flwData.data?.amount || 0);
-        if (paidAmount < authoritativePrice) {
-          return NextResponse.json({ error: `Payment amount (₦${paidAmount}) does not match plan price (₦${authoritativePrice})` }, { status: 400 });
-        }
-
-        if (flwData.data?.tx_ref && tx_ref && flwData.data.tx_ref !== tx_ref) {
-          return NextResponse.json({ error: 'Payment transaction reference mismatch' }, { status: 400 });
-        }
-
-        if (flwData.data?.currency && flwData.data.currency !== 'NGN') {
-          return NextResponse.json({ error: 'Invalid currency for transaction' }, { status: 400 });
-        }
-      } catch (flwErr) {
-        console.error('Flutterwave verify error:', flwErr);
-        return NextResponse.json({ error: 'Unable to verify payment with gateway: ' + flwErr.message }, { status: 502 });
-      }
-    }
 
     // 4. Generate collision-safe voucher code
     let code = await generateUniqueCode();
@@ -188,7 +240,7 @@ export async function POST(request) {
           password: code,
           profile: effectivePlanName,
           limitUptime: uptimeMap[effectiveDuration] || effectiveDuration || '1d',
-          comment: `Online Pay: ${email || phone || 'Guest'} - ${effectivePlanName} - ₦${authoritativePrice} [Ref: ${tx_ref}]`,
+          comment: `Online Pay: ${effectiveEmail || effectivePhone || 'Guest'} - ${effectivePlanName} - ₦${authoritativePrice} [Ref: ${effectiveTxRef}]`,
           shared_users: planDevices,
           rate_limit: rateLimit,
           expiry_mode: expiryMode,
@@ -200,8 +252,8 @@ export async function POST(request) {
         const { data: claimedRows, error: claimErr } = await supabaseAdmin
           .rpc('claim_fallback_voucher', {
             p_profile_name: effectivePlanName,
-            p_plan_id: planData.id || plan_id || null,
-            p_user_id: user_id || null,
+            p_plan_id: planData.id || resolvedPlanId || null,
+            p_user_id: effectiveUserId,
           });
 
         if (!claimErr && claimedRows && claimedRows.length > 0) {
@@ -214,7 +266,7 @@ export async function POST(request) {
           // We do NOT insert a voucher row here — the user must contact support with the tx_ref
           return NextResponse.json({
             success: false,
-            error: `Payment was verified (Ref: ${tx_ref}), but the router API failed ("${routerErr.message}") and no fallback vouchers are available in stock for "${effectivePlanName}". Please contact support with Ref: ${tx_ref}.`,
+            error: `Payment was verified (Ref: ${effectiveTxRef}), but the router API failed ("${routerErr.message}") and no fallback vouchers are available in stock for "${effectivePlanName}". Please contact support with Ref: ${effectiveTxRef}.`,
             pending_router: true,
           }, { status: 502 });
         }
@@ -226,8 +278,8 @@ export async function POST(request) {
       const { data: claimedRows, error: claimErr } = await supabaseAdmin
         .rpc('claim_fallback_voucher', {
           p_profile_name: effectivePlanName,
-          p_plan_id: planData.id || plan_id || null,
-          p_user_id: user_id || null,
+          p_plan_id: planData.id || resolvedPlanId || null,
+          p_user_id: effectiveUserId,
         });
 
       if (!claimErr && claimedRows && claimedRows.length > 0) {
@@ -239,7 +291,7 @@ export async function POST(request) {
         // Router not configured + no fallback vouchers — return error without inserting
         return NextResponse.json({
           success: false,
-          error: `Payment was verified (Ref: ${tx_ref}), but the Wi-Fi router is not yet configured in settings and no fallback vouchers are in reserve for "${effectivePlanName}". Please contact support with Ref: ${tx_ref}.`,
+          error: `Payment was verified (Ref: ${effectiveTxRef}), but the Wi-Fi router is not yet configured in settings and no fallback vouchers are in reserve for "${effectivePlanName}". Please contact support with Ref: ${effectiveTxRef}.`,
           pending_router: true,
         }, { status: 502 });
       }
@@ -251,12 +303,12 @@ export async function POST(request) {
       const { data: tx } = await supabaseAdmin
         .from('transactions')
         .insert({
-          user_id: user_id || null,
+          user_id: effectiveUserId,
           type: 'voucher_purchase',
           amount: authoritativePrice,
           status: 'successful',
           payment_method: 'card',
-          flw_ref: tx_ref || null,
+          flw_ref: effectiveTxRef,
           metadata: {
             plan_name: effectivePlanName,
             voucher_code: code,
@@ -272,20 +324,20 @@ export async function POST(request) {
 
     // Calculate when this voucher expires (wall-clock time)
     const voucherExpiresAt = calculateExpiresAt(effectiveDuration);
-    const voucherLimitUptime = uptimeMap[effectiveDuration] || '1d';
+    const voucherLimitUptime = uptimeMap[effectiveDuration] || effectiveDuration || '1d';
 
     // 7. Record successful voucher in Supabase (include tx_ref for idempotency)
     await supabaseAdmin
       .from('vouchers')
       .insert({
-        user_id: user_id || null,
+        user_id: effectiveUserId,
         voucher_code: code,
         profile_name: effectivePlanName,
         price: authoritativePrice,
-        tx_ref: tx_ref || null,
+        tx_ref: effectiveTxRef,
         transaction_id: txId,
         is_used: false,
-        auto_renew: !!auto_renew,
+        auto_renew: effectiveAutoRenew,
         duration: voucherLimitUptime,
         expires_at: voucherExpiresAt,
       });
@@ -293,8 +345,8 @@ export async function POST(request) {
     logger.financial({
       action: 'card_voucher_purchase',
       amount: authoritativePrice,
-      userId: user_id || 'guest',
-      ref: tx_ref || null,
+      userId: effectiveUserId || 'guest',
+      ref: effectiveTxRef,
       status: 'successful',
       details: {
         transaction_id,
@@ -305,10 +357,10 @@ export async function POST(request) {
     }, logger.getCorrelationId(request));
 
     // 8. Create notification if user is logged in
-    if (user_id) {
+    if (effectiveUserId) {
       try {
         await supabaseAdmin.from('notifications').insert({
-          user_id,
+          user_id: effectiveUserId,
           title: isFallback ? 'Wi-Fi Pass Purchased (Backup Pool)' : 'Wi-Fi Pass Purchased',
           message: `${effectivePlanName} pass activated via card payment. Your code: ${code}`,
           type: 'voucher_purchase',
@@ -317,9 +369,9 @@ export async function POST(request) {
     }
 
     // 9. Asynchronously dispatch SMS voucher delivery (Feature 2.6)
-    if (phone) {
+    if (effectivePhone) {
       sendVoucherSms({
-        phone,
+        phone: effectivePhone,
         voucherCode: code,
         planName: effectivePlanName,
         duration: effectiveDuration,

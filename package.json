@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node test/run-all.js && node --test test/monnify.test.mjs test/voucher-expiry.test.mjs",
+    "test": "node test/run-all.js && node --test test/monnify.test.mjs test/voucher-expiry.test.mjs test/flutterwave-checkout.test.mjs",
     "test:expiry": "node --test test/voucher-expiry.test.mjs",
     "test:monnify": "node --test test/monnify.test.mjs"
   },

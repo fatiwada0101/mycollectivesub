@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
+import { supabase } from '../../../lib/supabase';
+import { createPaymentHeaders } from '../../../lib/payment-client.js';
 import BottomNav from '../../components/BottomNav';
 import ReceiptModal from '../../components/ReceiptModal';
 import DataUsageGauge from '../../components/DataUsageGauge';
@@ -25,6 +27,10 @@ function VoucherStatusContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialCode = searchParams.get('code') || '';
+  const redirectTxId = searchParams.get('transaction_id') || searchParams.get('transactionId') || '';
+  const redirectTxRef = searchParams.get('tx_ref') || '';
+  const redirectStatus = (searchParams.get('status') || '').toLowerCase();
+  const redirectPlanId = searchParams.get('plan_id') || '';
   const { user } = useAuth();
   const { appName } = useBranding();
 
@@ -32,6 +38,7 @@ function VoucherStatusContent() {
   const [inputCode, setInputCode] = useState(initialCode);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -39,9 +46,10 @@ function VoucherStatusContent() {
   const [showGift, setShowGift] = useState(false);
   const [toast, setToast] = useState('');
   const [networkInfo, setNetworkInfo] = useState({
-    hotspot_url: 'asuktech.net',
+    hotspot_url: 'hotspot.mycollectivesub.net',
     wifi_ssid: 'My Collective Sub Wi-Fi',
   });
+  const verifiedRedirectRef = useRef('');
 
   // Fetch hotspot URL and Wi-Fi SSID
   useEffect(() => {
@@ -50,7 +58,7 @@ function VoucherStatusContent() {
       .then(d => {
         if (d?.mikrotik) {
           setNetworkInfo({
-            hotspot_url: d.mikrotik.hotspot_url || 'asuktech.net',
+            hotspot_url: d.mikrotik.hotspot_url || 'hotspot.mycollectivesub.net',
             wifi_ssid: d.mikrotik.wifi_ssid || 'My Collective Sub Wi-Fi',
           });
         }
@@ -67,9 +75,99 @@ function VoucherStatusContent() {
     setTimeout(() => setToast(''), 3000);
   };
 
-  // If no code is in URL, try reading from localStorage
+  // Handle Flutterwave mobile/USSD redirect back to /vouchers/status
   useEffect(() => {
-    if (!voucherCode && typeof window !== 'undefined') {
+    if (initialCode || (!redirectTxId && !redirectStatus)) return;
+    const redirectKey = `${redirectTxRef}:${redirectTxId}:${redirectStatus}`;
+    if (verifiedRedirectRef.current === redirectKey) return;
+    verifiedRedirectRef.current = redirectKey;
+
+    if (redirectStatus === 'cancelled' || redirectStatus === 'failed') {
+      setError('Payment was cancelled or failed. You can try purchasing again.');
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/vouchers/status');
+      }
+      return;
+    }
+
+    if (!redirectTxId) return;
+
+    let cancelled = false;
+    (async () => {
+      setVerifyingPayment(true);
+      setError('');
+      try {
+        let savedOrder = null;
+        if (redirectTxRef) {
+          try {
+            savedOrder = JSON.parse(sessionStorage.getItem(`flw-order-${redirectTxRef}`) || 'null');
+          } catch {}
+        }
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        const sessionUser = sessionData?.session?.user;
+        const res = await fetch('/api/purchase/verify-payment', {
+          method: 'POST',
+          headers: createPaymentHeaders(sessionData?.session?.access_token),
+          body: JSON.stringify({
+            transaction_id: redirectTxId,
+            tx_ref: redirectTxRef || undefined,
+            plan_id: savedOrder?.plan_id || redirectPlanId || undefined,
+            plan_name: savedOrder?.plan_name || undefined,
+            price: savedOrder?.price || undefined,
+            duration: savedOrder?.duration || undefined,
+            email: savedOrder?.email || sessionUser?.email || '',
+            phone: savedOrder?.phone || '',
+            user_id: savedOrder?.user_id || sessionUser?.id || null,
+            auto_renew: !!savedOrder?.auto_renew,
+            gateway: 'flutterwave',
+          }),
+        });
+
+        const result = await res.json();
+        if (!res.ok || !result.voucher_code) {
+          throw new Error(result.error || 'Unable to verify redirected payment.');
+        }
+
+        if (redirectTxRef) {
+          try { sessionStorage.removeItem(`flw-order-${redirectTxRef}`); } catch {}
+        }
+
+        const activeV = {
+          code: result.voucher_code,
+          plan: result.plan || savedOrder?.plan_name || 'Wi-Fi Pass',
+          duration: savedOrder?.duration || '24h',
+          purchasedAt: Date.now(),
+          isUsed: false,
+        };
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
+            window.dispatchEvent(new Event('active_voucher_updated'));
+          } catch {}
+        }
+
+        if (!cancelled) {
+          setVoucherCode(result.voucher_code);
+          setInputCode(result.voucher_code);
+          router.replace(`/vouchers/status?code=${encodeURIComponent(result.voucher_code)}`);
+          showToast('✅ Payment verified! Your Wi-Fi pass is ready.');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || 'Could not verify redirected payment.');
+        }
+      } finally {
+        if (!cancelled) setVerifyingPayment(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [initialCode, redirectTxId, redirectTxRef, redirectStatus, redirectPlanId, router]);
+
+  // If no code is in URL (and no redirect verification is pending), try reading from localStorage
+  useEffect(() => {
+    if (!voucherCode && !redirectTxId && !verifyingPayment && redirectStatus !== 'cancelled' && redirectStatus !== 'failed' && typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('asuk_active_voucher');
         if (stored) {
@@ -81,7 +179,7 @@ function VoucherStatusContent() {
         }
       } catch (e) {}
     }
-  }, [voucherCode]);
+  }, [voucherCode, redirectTxId, verifyingPayment, redirectStatus]);
 
   // Fetch status from API
   const fetchStatus = useCallback(async (codeToFetch) => {
@@ -275,6 +373,22 @@ function VoucherStatusContent() {
           </button>
         </div>
       </form>
+
+      {verifyingPayment && (
+        <div style={{
+          background: 'rgba(16, 185, 129, 0.1)',
+          border: '1px solid rgba(16, 185, 129, 0.3)',
+          borderRadius: 16,
+          padding: '14px 18px',
+          color: '#065F46',
+          fontSize: '13px',
+          fontWeight: 600,
+          marginBottom: 18,
+          textAlign: 'center',
+        }}>
+          ⏳ Verifying your Flutterwave payment &amp; creating your Wi-Fi pass...
+        </div>
+      )}
 
       {error && (
         <div style={{

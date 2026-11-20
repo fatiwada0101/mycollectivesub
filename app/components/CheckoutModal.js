@@ -319,8 +319,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
     setLoadingText('Checking your previous payment...');
     try {
       const { data } = await supabase.auth.getSession();
-      const headers = { 'Content-Type': 'application/json' };
-      if (data?.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`;
+      const headers = createPaymentHeaders(data?.session?.access_token);
       const response = await fetch('/api/purchase/verify-payment', {
         method: 'POST', headers,
         body: JSON.stringify({ gateway: 'monnify', tx_ref: pendingMonnifyOrder.reference,
@@ -519,93 +518,129 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
     setLoadingText('Opening secure payment...');
 
     const txRef = 'FLW_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7).toUpperCase();
+    const redirectOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+    let verificationStarted = false;
 
-    window.FlutterwaveCheckout({
-      public_key: flwConfig.publicKey,
-      tx_ref: txRef,
-      amount: price,
-      currency: 'NGN',
-      payment_options: 'card,banktransfer,ussd',
-      // redirect_url: Flutterwave redirects here on mobile/USSD instead of firing JS callback.
-      // /vouchers/status shows the user their latest voucher after redirect.
-      redirect_url: `${window.location.origin}/vouchers/status?payment=success`,
-      customer: {
+    try {
+      sessionStorage.setItem(`flw-order-${txRef}`, JSON.stringify({
+        tx_ref: txRef,
+        plan_id: plan.id,
+        plan_name: plan.name,
+        price: Number(plan.price),
+        duration: plan.duration,
         email: user?.email || guestEmail,
-        phone_number: guestPhone || '08000000000',
-        name: user?.user_metadata?.full_name || guestEmail.split('@')[0] || 'Guest',
-      },
-      customizations: {
-        title: `${appName} Wi-Fi`,
-        description: `${plan.name} Wi-Fi Voucher`,
-        logo: 'https://cdn-icons-png.flaticon.com/512/93/93158.png',
-      },
-      callback: async function (response) {
-        if (response.status === 'successful' || response.status === 'completed') {
-          setLoadingText('Verifying payment & creating voucher on MikroTik router...');
-          try {
-            const verifyRes = await fetch('/api/purchase/verify-payment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                transaction_id: response.transaction_id,
-                tx_ref: response.tx_ref || txRef,
-                plan_id: plan.id,
-                plan_name: plan.name,
-                price: plan.price,
+        phone: guestPhone || '',
+        user_id: user?.id || null,
+        auto_renew: !!autoRenew,
+      }));
+    } catch {}
+
+    try {
+      window.FlutterwaveCheckout({
+        public_key: flwConfig.publicKey,
+        tx_ref: txRef,
+        amount: price,
+        currency: 'NGN',
+        payment_options: 'card,banktransfer,ussd',
+        // redirect_url: Flutterwave redirects here on mobile/USSD instead of firing JS callback.
+        // /vouchers/status completes verification using tx_ref & transaction_id if needed.
+        redirect_url: `${redirectOrigin}/vouchers/status?payment=success&plan_id=${encodeURIComponent(plan.id)}`,
+        customer: {
+          email: user?.email || guestEmail,
+          phone_number: guestPhone || '08000000000',
+          name: user?.user_metadata?.full_name || guestEmail.split('@')[0] || 'Guest',
+        },
+        meta: {
+          type: 'voucher_purchase',
+          plan_id: plan.id,
+          plan_name: plan.name,
+          user_id: user?.id || null,
+          auto_renew: !!autoRenew,
+        },
+        customizations: {
+          title: `${appName} Wi-Fi`,
+          description: `${plan.name} Wi-Fi Voucher`,
+          logo: 'https://cdn-icons-png.flaticon.com/512/93/93158.png',
+        },
+        callback: async function (response) {
+          if (verificationStarted) return;
+          verificationStarted = true;
+          if (response.status === 'successful' || response.status === 'completed') {
+            setLoadingText('Verifying payment & creating voucher on MikroTik router...');
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const verifyRes = await fetch('/api/purchase/verify-payment', {
+                method: 'POST',
+                headers: createPaymentHeaders(sessionData?.session?.access_token),
+                body: JSON.stringify({
+                  transaction_id: response.transaction_id,
+                  tx_ref: response.tx_ref || txRef,
+                  plan_id: plan.id,
+                  plan_name: plan.name,
+                  price: plan.price,
+                  duration: plan.duration,
+                  email: user?.email || guestEmail,
+                  phone: guestPhone,
+                  user_id: user?.id || null,
+                  auto_renew: autoRenew,
+                  gateway: 'flutterwave',
+                }),
+              });
+
+              const verifyData = await verifyRes.json();
+              if (!verifyRes.ok) {
+                throw new Error(verifyData.error || 'Router provisioning failed after payment');
+              }
+
+              try { sessionStorage.removeItem(`flw-order-${txRef}`); } catch {}
+
+              const activeV = {
+                code: verifyData.voucher_code,
+                plan: plan.name,
                 duration: plan.duration,
-                email: user?.email || guestEmail,
-                phone: guestPhone,
-                user_id: user?.id || null,
-                auto_renew: autoRenew,
-                gateway: 'flutterwave',
-              }),
-            });
+                purchasedAt: Date.now(),
+                isUsed: false,
+              };
+              if (typeof window !== 'undefined') {
+                try {
+                  localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
+                  window.dispatchEvent(new Event('active_voucher_updated'));
+                } catch (e) {}
+              }
 
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) {
-              throw new Error(verifyData.error || 'Router provisioning failed after payment');
+              setVoucherData({
+                code: verifyData.voucher_code,
+                plan: plan.name,
+                duration: plan.duration,
+                routerId: verifyData.router_id,
+                isFallback: verifyData.is_fallback,
+              });
+              setStep('success');
+              processingRef.current = false;
+              if (onSuccess) onSuccess();
+            } catch (err) {
+              setErrorMessage(err.message);
+              setStep('error');
+              processingRef.current = false;
             }
-
-            const activeV = {
-              code: verifyData.voucher_code,
-              plan: plan.name,
-              duration: plan.duration,
-              purchasedAt: Date.now(),
-              isUsed: false,
-            };
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
-                window.dispatchEvent(new Event('active_voucher_updated'));
-              } catch (e) {}
-            }
-
-            setVoucherData({
-              code: verifyData.voucher_code,
-              plan: plan.name,
-              duration: plan.duration,
-              routerId: verifyData.router_id,
-              isFallback: verifyData.is_fallback,
-            });
-            setStep('success');
-            processingRef.current = false;
-            if (onSuccess) onSuccess();
-          } catch (err) {
-            setErrorMessage(err.message);
+          } else {
+            setErrorMessage('Payment was not completed. Please try again.');
             setStep('error');
             processingRef.current = false;
           }
-        } else {
-          setErrorMessage('Payment was not completed. Please try again.');
-          setStep('error');
-          processingRef.current = false;
-        }
-      },
-      onclose: function () {
-        processingRef.current = false;
-        setStep('review');
-      },
-    });
+        },
+        onclose: function () {
+          if (!verificationStarted) {
+            processingRef.current = false;
+            setStep('review');
+          }
+        },
+      });
+    } catch (error) {
+      setErrorMessage(error.message || 'Unable to open payment checkout');
+      setStep('error');
+      processingRef.current = false;
+    }
   };
 
   return (
