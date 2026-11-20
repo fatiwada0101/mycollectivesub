@@ -41,7 +41,7 @@ export default function DashboardTab({
               <div className="sa-kpi-card">
                 <div className="sa-kpi-top">
                   <span className="sa-kpi-label">Vouchers Sold</span>
-                  <div className="sa-kpi-icon-mini"><TicketIcon size={16} color="#34A853" /></div>
+                  <div className="sa-kpi-icon-mini"><TicketIcon size={16} color="#0088FF" /></div>
                 </div>
                 <div className="sa-kpi-value">{stats.vouchers}</div>
                 <div className="sa-kpi-footer">{stats.totalGenerated || stats.vouchers} total generated</div>
@@ -57,7 +57,7 @@ export default function DashboardTab({
               <div className="sa-kpi-card">
                 <div className="sa-kpi-top">
                   <span className="sa-kpi-label">Router Users</span>
-                  <div className="sa-kpi-icon-mini"><UsersIcon size={16} color="#141417" /></div>
+                  <div className="sa-kpi-icon-mini"><UsersIcon size={16} color="#062B66" /></div>
                 </div>
                 <div className="sa-kpi-value">{routerUsers.length}</div>
                 <div className="sa-kpi-footer">Provisioned on router</div>
@@ -111,7 +111,7 @@ export default function DashboardTab({
                         <span className="sa-dist-count">{item.count} sold ({item.percentage}%) • {formatPrice(item.revenue)}</span>
                       </div>
                       <div className="sa-dist-track">
-                        <div className="sa-dist-fill" style={{ width: `${item.percentage}%`, background: ['#34A853','#10B981','#FFB84C','#3B82F6','#EC4899'][idx % 5] }} />
+                        <div className="sa-dist-fill" style={{ width: `${item.percentage}%`, background: ['#0088FF','#062B66','#0095FF','#10B981','#3B82F6'][idx % 5] }} />
                       </div>
                     </div>
                   ))}
@@ -184,14 +184,14 @@ export default function DashboardTab({
                           type="button"
                           onClick={() => setActiveTab('mikrotik')}
                           style={{
-                            background: 'rgba(52, 168, 83, 0.15)',
-                            border: '1px solid rgba(52, 168, 83, 0.4)',
-                            color: '#4ADE80',
+                            background: '#E6F2FF',
+                            border: '1px solid #BFDBFE',
+                            color: '#035EC8',
                             borderRadius: '6px',
                             padding: '3px 10px',
                             fontSize: '11px',
                             cursor: 'pointer',
-                            fontWeight: 600,
+                            fontWeight: 700,
                           }}
                         >
                           Power-Cut Auto-Recovery Setup →

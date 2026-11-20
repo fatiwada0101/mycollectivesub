@@ -65,19 +65,19 @@ const THEME_PALETTES = {
     id: 'royalblue',
     label: 'Royal Blue',
     emoji: '👑',
-    primary: '#1E40AF',
-    primaryDark: '#1E3A8A',
+    primary: '#0088FF',
+    primaryDark: '#062B66',
     primaryLight: '#60A5FA',
-    cardGradient: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-    cardSolid: '#2563EB',
-    dockBg: '#0A1628',
+    cardGradient: 'linear-gradient(135deg, #062B66 0%, #035EC8 55%, #0088FF 100%)',
+    cardSolid: '#0088FF',
+    dockBg: '#062B66',
     accentSurface: '#EFF6FF',
-    accentBorder: 'rgba(30, 64, 175, 0.2)',
-    badgeBg: '#EFF6FF',
-    badgeText: '#1E40AF',
-    darkAccentSurface: 'rgba(37, 99, 235, 0.18)',
-    darkAccentBorder: 'rgba(37, 99, 235, 0.35)',
-    darkBadgeBg: 'rgba(37, 99, 235, 0.22)',
+    accentBorder: 'rgba(0, 136, 255, 0.22)',
+    badgeBg: '#E6F2FF',
+    badgeText: '#035EC8',
+    darkAccentSurface: 'rgba(0, 136, 255, 0.18)',
+    darkAccentBorder: 'rgba(0, 136, 255, 0.35)',
+    darkBadgeBg: 'rgba(0, 136, 255, 0.22)',
     darkBadgeText: '#93C5FD',
   },
   emerald: {
@@ -159,9 +159,9 @@ const THEME_PALETTES = {
 };
 
 const DEFAULT_BRANDING = {
-  app_name: 'My Collective Sub',
+  app_name: 'MyCollectiveSub',
   logo_url: '',
-  theme: 'violet',
+  theme: 'royalblue',
   app_url: '',
 };
 
@@ -169,8 +169,8 @@ const BrandingContext = createContext({
   appName: DEFAULT_BRANDING.app_name,
   logoUrl: DEFAULT_BRANDING.logo_url,
   appUrl: DEFAULT_BRANDING.app_url,
-  theme: THEME_PALETTES.violet,
-  themeId: 'violet',
+  theme: THEME_PALETTES.royalblue,
+  themeId: 'royalblue',
   palettes: THEME_PALETTES,
   setTheme: () => {},
   mode: 'light',
@@ -186,7 +186,7 @@ export function BrandingProvider({ children }) {
   const [mode, setModeState] = useState('light'); // 'light' | 'dark' - default light
   const [isDark, setIsDark] = useState(false);
 
-  const currentTheme = THEME_PALETTES[branding.theme] || THEME_PALETTES.violet;
+  const currentTheme = THEME_PALETTES[branding.theme] || THEME_PALETTES.royalblue;
 
   // Read saved mode preference from localStorage - default to light
   useEffect(() => {

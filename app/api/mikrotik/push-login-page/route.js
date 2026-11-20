@@ -27,15 +27,25 @@ export async function GET(request) {
     // Load saved portal config and branding from app_settings
     let savedConfig = {};
     let savedBranding = {};
+    let activePlans = [];
     try {
-      const { data } = await supabaseAdmin
-        .from('app_settings')
-        .select('key, value')
-        .in('key', ['portal_template', 'branding']);
+      const [{ data }, { data: planRows }] = await Promise.all([
+        supabaseAdmin
+          .from('app_settings')
+          .select('key, value')
+          .in('key', ['portal_template', 'branding']),
+        supabaseAdmin
+          .from('plans')
+          .select('id, name, speed, price, duration, popular')
+          .eq('active', true)
+          .order('sort_order', { ascending: true })
+          .limit(4),
+      ]);
       (data || []).forEach(r => {
         if (r.key === 'portal_template') savedConfig = r.value || {};
         if (r.key === 'branding') savedBranding = r.value || {};
       });
+      activePlans = planRows || [];
     } catch {}
 
     const defaultBuyUrl = savedConfig.buyUrl
@@ -55,7 +65,7 @@ export async function GET(request) {
     const primaryColor = searchParams.get('primary_color') || savedConfig.primaryColor || '';
 
     const templateOpts = {
-      templateId, wifiSsid, buyUrl, logoUrl, businessName, contactFooter, primaryColor,
+      templateId, wifiSsid, buyUrl, logoUrl, businessName, contactFooter, primaryColor, plans: activePlans,
     };
 
     let html = '';

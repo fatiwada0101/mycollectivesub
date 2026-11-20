@@ -9,6 +9,7 @@ import BottomNav from './components/BottomNav';
 import SideDrawer from './components/SideDrawer';
 import CheckoutModal from './components/CheckoutModal';
 import PwaInstallBanner from './components/PwaInstallBanner';
+import BrandMark from './components/BrandMark';
 import {
   MenuSliderIcon,
   BellIcon,
@@ -350,26 +351,13 @@ export default function HomePage() {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            padding: '6px 14px',
+            padding: '5px 12px',
             background: 'var(--surface, #FFFFFF)',
             borderRadius: '999px',
-            border: '1.5px solid var(--border-light, #ECEEF2)',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)',
+            border: '1.5px solid var(--border-light, #CFE5FF)',
+            boxShadow: '0 2px 8px rgba(6, 43, 102, 0.06)',
           }}>
-            <div style={{
-              width: '22px',
-              height: '22px',
-              borderRadius: '6px',
-              background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <WifiIcon size={13} color="#FFFFFF" />
-            </div>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary, #121217)', letterSpacing: '-0.3px' }}>
-              {appName || 'My Collective Sub'}
-            </span>
+            <BrandMark size={24} appName={appName} />
           </div>
         </div>
 
@@ -437,7 +425,7 @@ export default function HomePage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid var(--border-light, #ECEEF2)', paddingBottom: '10px' }}>
                   <strong style={{ fontSize: '14px', color: 'var(--text-primary, #121217)' }}>Notifications</strong>
                   {unreadCount > 0 && (
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#34A853', background: 'rgba(52, 168, 83, 0.12)', padding: '2px 8px', borderRadius: '999px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#035EC8', background: 'rgba(0, 136, 255, 0.12)', padding: '2px 8px', borderRadius: '999px' }}>
                       {unreadCount} new
                     </span>
                   )}
@@ -456,7 +444,7 @@ export default function HomePage() {
                           gap: '10px',
                           padding: '8px',
                           borderRadius: '12px',
-                          background: !n.is_read ? 'rgba(52, 168, 83, 0.06)' : 'transparent',
+                          background: !n.is_read ? 'rgba(0, 136, 255, 0.08)' : 'transparent',
                         }}
                       >
                         <div style={{ fontSize: '18px' }}>
@@ -491,7 +479,7 @@ export default function HomePage() {
               width: '42px',
               height: '42px',
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+              background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
               color: '#FFFFFF',
               display: 'flex',
               alignItems: 'center',
@@ -500,7 +488,7 @@ export default function HomePage() {
               fontWeight: 800,
               cursor: 'pointer',
               border: '2px solid #FFFFFF',
-              boxShadow: '0 3px 12px rgba(52, 168, 83, 0.35)',
+              boxShadow: '0 3px 12px rgba(0, 136, 255, 0.35)',
               position: 'relative',
             }}
           >
@@ -556,9 +544,9 @@ export default function HomePage() {
           gap: '7px',
           padding: '6px 14px',
           borderRadius: '999px',
-          background: 'rgba(52, 168, 83, 0.12)',
-          border: '1.5px solid rgba(52, 168, 83, 0.28)',
-          color: '#34A853',
+          background: '#E6F2FF',
+          border: '1.5px solid #BFDBFE',
+          color: '#035EC8',
           fontSize: '12px',
           fontWeight: 800,
         }}>
@@ -566,25 +554,25 @@ export default function HomePage() {
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: '#34A853',
-            boxShadow: '0 0 10px #34A853',
+            background: '#16A34A',
+            boxShadow: '0 0 8px #16A34A',
           }} />
           Hotspot Ready
         </div>
       </div>
 
-      {/* ── Primary Wallet Master Card (Redesigned) ── */}
+      {/* ── Primary Wallet Master Card (Flyer Deep Navy & Azure) ── */}
       <div className="wallet-card-container" style={{ marginBottom: '22px' }}>
         <div
           className="card-front-violet"
           style={{
-            background: 'linear-gradient(135deg, #1A4D2E 0%, #153822 50%, #0F2A19 100%)',
+            background: 'linear-gradient(135deg, #062B66 0%, #035EC8 55%, #0088FF 100%)',
             borderRadius: '26px',
             padding: '24px 22px 20px',
             color: '#FFFFFF',
             position: 'relative',
             overflow: 'hidden',
-            boxShadow: '0 16px 36px -4px rgba(26, 77, 46, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12)',
+            boxShadow: '0 16px 36px -4px rgba(0, 115, 230, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.14)',
           }}
         >
           {/* Subtle Ambient Radial Glow */}
@@ -595,7 +583,7 @@ export default function HomePage() {
             width: '180px',
             height: '180px',
             borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(52, 168, 83, 0.35) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(0, 149, 255, 0.42) 0%, transparent 70%)',
             pointerEvents: 'none',
           }} />
 
@@ -727,7 +715,7 @@ export default function HomePage() {
                 padding: '9px 18px',
                 borderRadius: '999px',
                 background: '#FFFFFF',
-                color: '#153822',
+                color: '#062B66',
                 border: 'none',
                 fontSize: '12.5px',
                 fontWeight: 800,
@@ -736,7 +724,7 @@ export default function HomePage() {
                 transition: 'transform 0.15s ease',
               }}
             >
-              <PlusIcon size={14} color="#153822" />
+              <PlusIcon size={14} color="#062B66" />
               <span>Top Up</span>
             </button>
           </div>
@@ -749,25 +737,25 @@ export default function HomePage() {
           background: 'var(--surface, #FFFFFF)',
           borderRadius: '20px',
           padding: '16px 18px',
-          border: '1.5px solid rgba(52, 168, 83, 0.25)',
+          border: '1.5px solid #BFDBFE',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: '22px',
-          boxShadow: '0 6px 20px rgba(52, 168, 83, 0.08)',
+          boxShadow: '0 6px 20px rgba(0, 136, 255, 0.1)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
               width: '42px',
               height: '42px',
               borderRadius: '14px',
-              background: 'rgba(52, 168, 83, 0.12)',
+              background: '#EFF6FF',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               position: 'relative',
             }}>
-              <WifiIcon size={20} color="#34A853" />
+              <WifiIcon size={20} color="#0088FF" />
               <span style={{
                 position: 'absolute',
                 top: '6px',
@@ -775,15 +763,15 @@ export default function HomePage() {
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                background: '#34A853',
-                boxShadow: '0 0 8px #34A853',
+                background: '#16A34A',
+                boxShadow: '0 0 8px #16A34A',
               }} />
             </div>
             <div>
-              <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-primary, #121217)' }}>
+              <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-primary, #062B66)' }}>
                 Active Wi-Fi Session
               </div>
-              <div style={{ fontSize: '12px', color: '#34A853', fontWeight: 700, marginTop: '2px' }}>
+              <div style={{ fontSize: '12px', color: '#035EC8', fontWeight: 700, marginTop: '2px' }}>
                 {countdownText} remaining
               </div>
             </div>
@@ -794,11 +782,11 @@ export default function HomePage() {
             style={{
               padding: '8px 14px',
               borderRadius: '999px',
-              background: 'rgba(52, 168, 83, 0.12)',
-              color: '#34A853',
+              background: '#E6F2FF',
+              color: '#035EC8',
               fontSize: '12px',
               fontWeight: 800,
-              border: '1px solid rgba(52, 168, 83, 0.25)',
+              border: '1px solid #BFDBFE',
               cursor: 'pointer',
             }}
           >
@@ -825,9 +813,9 @@ export default function HomePage() {
             borderRadius: '18px',
             padding: '16px 8px 14px',
             textAlign: 'center',
-            border: '1.5px solid var(--border-light, #ECEEF2)',
+            border: '1.5px solid var(--border-light, #CFE5FF)',
             cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+            boxShadow: '0 4px 12px rgba(6, 43, 102, 0.05)',
             transition: 'all 0.15s ease',
           }}
         >
@@ -835,13 +823,13 @@ export default function HomePage() {
             width: '42px',
             height: '42px',
             borderRadius: '14px',
-            background: 'rgba(52, 168, 83, 0.12)',
+            background: '#EFF6FF',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 8px',
           }}>
-            <ArrowUpRightIcon size={20} color="#34A853" />
+            <ArrowUpRightIcon size={20} color="#0088FF" />
           </div>
           <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary, #121217)', display: 'block' }}>
             Quick Pass
@@ -956,7 +944,7 @@ export default function HomePage() {
             </h2>
             <span
               onClick={() => router.push('/packages')}
-              style={{ color: '#34A853', fontWeight: 800, fontSize: '13px', cursor: 'pointer' }}
+              style={{ color: '#035EC8', fontWeight: 800, fontSize: '13px', cursor: 'pointer' }}
             >
               View All Passes →
             </span>
@@ -970,11 +958,11 @@ export default function HomePage() {
                   background: 'var(--surface, #FFFFFF)',
                   borderRadius: '20px',
                   padding: '16px 18px',
-                  border: '1.5px solid var(--border-light, #ECEEF2)',
+                  border: '1.5px solid var(--border-light, #CFE5FF)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  boxShadow: '0 3px 12px rgba(0,0,0,0.03)',
+                  boxShadow: '0 4px 14px rgba(6, 43, 102, 0.05)',
                   position: 'relative',
                 }}
               >
@@ -983,7 +971,7 @@ export default function HomePage() {
                     position: 'absolute',
                     top: '-9px',
                     left: '18px',
-                    background: '#34A853',
+                    background: '#0088FF',
                     color: '#FFFFFF',
                     fontSize: '10px',
                     fontWeight: 800,
@@ -991,23 +979,23 @@ export default function HomePage() {
                     borderRadius: '999px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
-                    boxShadow: '0 2px 6px rgba(52, 168, 83, 0.4)',
+                    boxShadow: '0 2px 6px rgba(0, 136, 255, 0.4)',
                   }}>
                     Popular
                   </span>
                 )}
 
                 <div style={{ marginTop: idx === 0 ? '4px' : '0' }}>
-                  <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary, #121217)' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary, #062B66)' }}>
                     {plan.name}
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #8E8E93)', marginTop: '2px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #64748B)', marginTop: '2px' }}>
                     {plan.duration || 'Unlimited Fast Internet'}
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#34A853' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#062B66' }}>
                     {formatPrice(plan.price)}
                   </div>
                   <button
@@ -1015,13 +1003,13 @@ export default function HomePage() {
                     style={{
                       padding: '8px 16px',
                       borderRadius: '999px',
-                      background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+                      background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                       color: '#FFFFFF',
                       fontSize: '12.5px',
                       fontWeight: 800,
                       border: 'none',
                       cursor: 'pointer',
-                      boxShadow: '0 3px 10px rgba(52, 168, 83, 0.3)',
+                      boxShadow: '0 3px 10px rgba(0, 136, 255, 0.28)',
                     }}
                   >
                     Get Pass

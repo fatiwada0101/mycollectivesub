@@ -45,19 +45,19 @@ export default function VoucherQrModal({ isOpen, onClose, voucherCode, planName,
       <!DOCTYPE html>
       <html>
         <head>
-          <title>African Network Voucher - ${cleanCode}</title>
+          <title>MyCollectiveSub Voucher - ${cleanCode}</title>
           <style>
             body { font-family: system-ui, sans-serif; text-align: center; padding: 40px; }
-            .card { border: 2px dashed #34A853; border-radius: 16px; padding: 24px; max-width: 320px; margin: 0 auto; }
-            h2 { color: #34A853; margin: 0 0 8px; }
-            .code { font-family: monospace; font-size: 20px; font-weight: bold; background: #F3F4F6; padding: 8px 16px; border-radius: 8px; display: inline-block; margin: 12px 0; }
+            .card { border: 2px dashed #0088FF; border-radius: 16px; padding: 24px; max-width: 320px; margin: 0 auto; }
+            h2 { color: #062B66; margin: 0 0 8px; }
+            .code { font-family: monospace; font-size: 20px; font-weight: bold; background: #EFF6FF; padding: 8px 16px; border-radius: 8px; display: inline-block; margin: 12px 0; }
             img { width: 200px; height: 200px; }
             p { color: #666; font-size: 13px; margin: 6px 0; }
           </style>
         </head>
         <body>
           <div class="card">
-            <h2>African Network Wi-Fi Pass</h2>
+            <h2>MyCollectiveSub Wi-Fi Pass</h2>
             <p><strong>${planName || 'High-Speed Pass'}</strong> • ${duration || 'Active'}</p>
             <div class="code">${cleanCode}</div>
             <br />

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useBranding } from '../context/BrandingContext';
 import { useAuth } from '../context/AuthContext';
-import { WifiIcon } from '../components/Icons';
+import BrandMark from '../components/BrandMark';
 
 export default function LandingPage() {
   const { appName } = useBranding();
@@ -12,7 +12,6 @@ export default function LandingPage() {
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
 
-  // Fetch live plans from DB with clean fallbacks
   useEffect(() => {
     fetch('/api/super-admin/plans')
       .then((res) => (res.ok ? res.json() : []))
@@ -21,19 +20,19 @@ export default function LandingPage() {
           setPlans(data.filter((p) => p.active !== false));
         } else {
           setPlans([
-            { id: '1h', name: '1 Hour Pass', price: 100, duration: '1 Hour', popular: false },
-            { id: '1d', name: '1 Day Pass', price: 300, duration: '24 Hours', popular: true },
-            { id: '7d', name: '7 Days Pass', price: 1500, duration: '7 Days', popular: false },
-            { id: '30d', name: '30 Days Pass', price: 5000, duration: '30 Days', popular: false },
+            { id: 'plan-1gb', name: '1GB', price: 100, duration: '24 Hours', popular: false },
+            { id: 'plan-12h', name: '12 Hours', price: 250, duration: '12 Hours', popular: true },
+            { id: 'plan-3d', name: '3 Days', price: 800, duration: '3 Days', popular: false },
+            { id: 'plan-7d', name: '7 Days', price: 2000, duration: '7 Days', popular: false },
           ]);
         }
       })
       .catch(() => {
         setPlans([
-          { id: '1h', name: '1 Hour Pass', price: 100, duration: '1 Hour', popular: false },
-          { id: '1d', name: '1 Day Pass', price: 300, duration: '24 Hours', popular: true },
-          { id: '7d', name: '7 Days Pass', price: 1500, duration: '7 Days', popular: false },
-          { id: '30d', name: '30 Days Pass', price: 5000, duration: '30 Days', popular: false },
+          { id: 'plan-1gb', name: '1GB', price: 100, duration: '24 Hours', popular: false },
+          { id: 'plan-12h', name: '12 Hours', price: 250, duration: '12 Hours', popular: true },
+          { id: 'plan-3d', name: '3 Days', price: 800, duration: '3 Days', popular: false },
+          { id: 'plan-7d', name: '7 Days', price: 2000, duration: '7 Days', popular: false },
         ]);
       })
       .finally(() => setPlansLoading(false));
@@ -46,16 +45,33 @@ export default function LandingPage() {
       maximumFractionDigits: 0,
     });
 
+  const lowestPrice = plans.length > 0
+    ? Math.min(...plans.map((p) => Number(p.price) || 100))
+    : 100;
+
   return (
     <div
       style={{
         minHeight: '100vh',
-        background: '#F8FAFC',
-        color: '#0F172A',
-        fontFamily:
-          "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        background: 'linear-gradient(160deg, #F7FBFF 0%, #E6F2FF 55%, #D5EBFF 100%)',
+        color: '#062B66',
+        fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        position: 'relative',
+        overflowX: 'hidden',
       }}
     >
+      {/* Subtle Flyer Corner Ribbons */}
+      <div style={{
+        position: 'fixed', top: -80, left: -80, width: 220, height: 220,
+        background: 'linear-gradient(135deg, #062B66, #0095FF)', borderRadius: '0 0 180px 0',
+        opacity: 0.14, pointerEvents: 'none', zIndex: 0,
+      }} />
+      <div style={{
+        position: 'fixed', bottom: -80, right: -80, width: 240, height: 180,
+        background: 'linear-gradient(135deg, #0095FF, #062B66)', borderRadius: '160px 0 0 0',
+        opacity: 0.14, pointerEvents: 'none', zIndex: 0,
+      }} />
+
       {/* ── TOP HEADER ── */}
       <header
         style={{
@@ -65,8 +81,8 @@ export default function LandingPage() {
           background: 'rgba(255, 255, 255, 0.92)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          borderBottom: '1px solid #E2E8F0',
-          padding: '12px 20px',
+          borderBottom: '1px solid #CFE5FF',
+          padding: '10px 20px',
         }}
       >
         <div
@@ -78,54 +94,37 @@ export default function LandingPage() {
             justifyContent: 'space-between',
           }}
         >
-          {/* Brand */}
-          <Link
-            href="/"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              textDecoration: 'none',
-            }}
-          >
-            <div
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 8px rgba(22, 163, 74, 0.25)',
-              }}
-            >
-              <WifiIcon size={20} color="#FFFFFF" />
-            </div>
-            <div
-              style={{
-                fontSize: '16px',
-                fontWeight: 800,
-                color: '#0F172A',
-              }}
-            >
-              My Collective Sub
-            </div>
+          <Link href="/" style={{ textDecoration: 'none' }}>
+            <BrandMark size={34} appName={appName} showSubtext />
           </Link>
 
-          {/* Quick Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Link
+              href="/packages"
+              style={{
+                padding: '8px 14px',
+                borderRadius: '999px',
+                background: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+                color: '#035EC8',
+                fontSize: '13px',
+                fontWeight: 800,
+                textDecoration: 'none',
+              }}
+            >
+              Data Plans
+            </Link>
             <Link
               href={user ? '/' : '/auth'}
               style={{
                 padding: '8px 18px',
-                borderRadius: '8px',
-                background: '#16A34A',
+                borderRadius: '999px',
+                background: 'linear-gradient(90deg, #062B66 0%, #0088FF 100%)',
                 color: '#FFFFFF',
                 fontSize: '13px',
-                fontWeight: 700,
+                fontWeight: 800,
                 textDecoration: 'none',
-                boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)',
+                boxShadow: '0 4px 12px rgba(0, 136, 255, 0.28)',
               }}
             >
               {user ? 'My Account' : 'Sign In'}
@@ -137,424 +136,338 @@ export default function LandingPage() {
       {/* ── HERO SECTION ── */}
       <section
         style={{
-          padding: '48px 20px 40px',
-          maxWidth: '860px',
+          padding: '44px 20px 32px',
+          maxWidth: '900px',
           margin: '0 auto',
           textAlign: 'center',
+          position: 'relative',
+          zIndex: 1,
         }}
       >
-        {/* Status Pill */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+          <BrandMark size={56} showWordmark={false} />
+        </div>
+
+        <h1
+          style={{
+            fontSize: 'clamp(28px, 5.5vw, 44px)',
+            fontWeight: 900,
+            color: '#062B66',
+            lineHeight: 1.15,
+            letterSpacing: '-0.6px',
+            margin: '0 0 8px',
+          }}
+        >
+          MYCOLLECTIVE<span style={{ color: '#0095FF' }}>SUB</span>
+        </h1>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          margin: '0 auto 6px', fontSize: 14, fontWeight: 700, color: '#062B66',
+        }}>
+          <span style={{ height: 2, width: 46, background: '#7CB7EF', borderRadius: 2 }} />
+          <span>Digital Services</span>
+          <span style={{ height: 2, width: 46, background: '#7CB7EF', borderRadius: 2 }} />
+        </div>
+
+        <p style={{ fontSize: '14px', fontWeight: 700, color: '#1E4079', margin: '0 0 18px' }}>
+          Connecting People. Connecting Possibilities.
+        </p>
+
+        {/* Flyer Pill Banner */}
         <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '6px 14px',
+            gap: '10px',
+            padding: '6px 22px 6px 8px',
             borderRadius: '999px',
-            background: '#DCFCE7',
-            border: '1px solid #BBF7D0',
-            color: '#15803D',
-            fontSize: '12px',
-            fontWeight: 700,
-            marginBottom: '20px',
+            background: 'linear-gradient(90deg, #032D74 0%, #008CFF 100%)',
+            color: '#FFFFFF',
+            fontSize: '15px',
+            fontWeight: 800,
+            marginBottom: '22px',
+            boxShadow: '0 8px 22px rgba(0, 115, 230, 0.26)',
           }}
         >
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: '#16A34A',
-            }}
-          />
-          High-Speed Wi-Fi • Katsina State, Nigeria
+          <span style={{
+            width: 32, height: 32, borderRadius: '50%', background: '#FFFFFF',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0088FF" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+              <circle cx="12" cy="19.5" r="1.2" fill="#0088FF" />
+            </svg>
+          </span>
+          Wi-Fi / Data Subscription
         </div>
-
-        {/* Main Title */}
-        <h1
-          style={{
-            fontSize: 'clamp(28px, 6vw, 46px)',
-            fontWeight: 900,
-            color: '#0F172A',
-            lineHeight: 1.2,
-            letterSpacing: '-0.5px',
-            margin: '0 0 16px',
-          }}
-        >
-          Fast, Reliable Wi-Fi Hotspots Across Katsina
-        </h1>
 
         <p
           style={{
-            fontSize: 'clamp(15px, 2.5vw, 17px)',
-            color: '#475569',
+            fontSize: 'clamp(14.5px, 2.3vw, 17px)',
+            color: '#3B5D94',
             lineHeight: 1.6,
-            maxWidth: '620px',
-            margin: '0 auto 28px',
+            maxWidth: '600px',
+            margin: '0 auto 24px',
           }}
         >
-          Connect instantly from <strong>₦100</strong>. Enjoy uninterrupted high-speed internet for browsing, streaming, work, and studies.
+          Connect instantly from <strong>{formatPrice(lowestPrice)}</strong>. Fast, reliable wireless hotspot access for streaming, work, and study.
         </p>
 
-        {/* CTA Button */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            marginBottom: '36px',
-          }}
-        >
-          <a
-            href="#plans"
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '26px' }}>
+          <Link
+            href="/packages"
             style={{
               display: 'inline-block',
-              padding: '14px 32px',
-              borderRadius: '10px',
-              background: '#16A34A',
+              padding: '13px 28px',
+              borderRadius: '999px',
+              background: 'linear-gradient(90deg, #062B66 0%, #0088FF 100%)',
               color: '#FFFFFF',
               fontSize: '15px',
               fontWeight: 800,
               textDecoration: 'none',
-              boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)',
+              boxShadow: '0 8px 20px rgba(0, 136, 255, 0.28)',
             }}
           >
-            View Wi-Fi Passes →
+            Buy Data Plan →
+          </Link>
+          <a
+            href="#plans"
+            style={{
+              display: 'inline-block',
+              padding: '13px 24px',
+              borderRadius: '999px',
+              background: '#FFFFFF',
+              border: '1.5px solid #BFDBFE',
+              color: '#062B66',
+              fontSize: '15px',
+              fontWeight: 800,
+              textDecoration: 'none',
+              boxShadow: '0 4px 12px rgba(6, 43, 102, 0.06)',
+            }}
+          >
+            View Plans
           </a>
         </div>
 
-        {/* Trust Points */}
         <div
           style={{
             display: 'flex',
             flexWrap: 'wrap',
             justifyContent: 'center',
-            gap: '20px',
+            gap: '16px',
             fontSize: '13px',
-            color: '#64748B',
-            fontWeight: 600,
+            color: '#3B5D94',
+            fontWeight: 700,
           }}
         >
           <span>⚡ Instant Access</span>
           <span>•</span>
-          <span>₦ Starting at ₦100</span>
+          <span>₦ Starting at {formatPrice(lowestPrice)}</span>
           <span>•</span>
-          <span>📍 156 Abdullahi Sarki Mukhtar Rd</span>
+          <span>📱 Works on Any Device</span>
         </div>
       </section>
 
-      {/* ── PLANS & PRICING ── */}
+      {/* ── PLANS & PRICING (Flyer Wave Cards) ── */}
       <section
         id="plans"
         style={{
-          padding: '40px 20px',
-          maxWidth: '1000px',
+          padding: '28px 20px 40px',
+          maxWidth: '980px',
           margin: '0 auto',
+          position: 'relative',
+          zIndex: 1,
         }}
       >
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <h2
-            style={{
-              fontSize: 'clamp(22px, 4vw, 30px)',
-              fontWeight: 800,
-              color: '#0F172A',
-              margin: '0 0 8px',
-            }}
-          >
-            Affordable Wi-Fi Passes
+        <div style={{ textAlign: 'center', marginBottom: '26px' }}>
+          <h2 style={{ fontSize: 'clamp(22px, 4vw, 30px)', fontWeight: 900, color: '#062B66', margin: '0 0 6px' }}>
+            Affordable Wi-Fi &amp; Data Passes
           </h2>
-          <p style={{ fontSize: '14px', color: '#64748B', margin: 0 }}>
-            Choose a plan that fits your day. Instant activation.
+          <p style={{ fontSize: '14px', color: '#3B5D94', margin: 0 }}>
+            Tap any package below to proceed straight to instant checkout.
           </p>
         </div>
 
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
             gap: '16px',
           }}
         >
-          {plans.map((plan) => {
+          {(plansLoading ? [] : plans).map((plan) => {
             const isPopular = plan.popular || plan.id === '1d';
             return (
-              <div
+              <Link
                 key={plan.id}
+                href={`/packages?plan_id=${encodeURIComponent(plan.id)}`}
                 style={{
                   background: '#FFFFFF',
-                  borderRadius: '14px',
-                  padding: '24px 20px',
-                  border: isPopular ? '2px solid #16A34A' : '1px solid #E2E8F0',
+                  borderRadius: '20px',
+                  overflow: 'hidden',
+                  border: isPopular ? '2px solid #0088FF' : '1.5px solid #CFE5FF',
                   boxShadow: isPopular
-                    ? '0 8px 24px -4px rgba(22, 163, 74, 0.15)'
-                    : '0 2px 8px -2px rgba(0, 0, 0, 0.04)',
-                  position: 'relative',
+                    ? '0 12px 28px rgba(0, 136, 255, 0.2)'
+                    : '0 8px 20px rgba(6, 43, 102, 0.08)',
+                  textDecoration: 'none',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  transition: 'transform 0.15s ease',
                 }}
               >
-                {isPopular && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: '-11px',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      background: '#16A34A',
-                      color: '#FFFFFF',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      padding: '2px 10px',
-                      borderRadius: '999px',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Most Popular
-                  </span>
-                )}
-
-                <div>
-                  <h3
-                    style={{
-                      fontSize: '16px',
-                      fontWeight: 800,
-                      color: '#0F172A',
-                      margin: '0 0 6px',
-                    }}
-                  >
+                <div style={{ padding: '20px 16px 14px', textAlign: 'center' }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: '12px', background: '#EFF6FF',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+                  }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0088FF" strokeWidth="2.2" strokeLinecap="round">
+                      <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                      <circle cx="12" cy="19.5" r="1.2" fill="#0088FF" />
+                    </svg>
+                  </div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 900, color: '#062B66', margin: '0 0 4px' }}>
                     {plan.name}
                   </h3>
-                  <div
-                    style={{
-                      fontSize: '13px',
-                      color: '#64748B',
-                      marginBottom: '16px',
-                    }}
-                  >
-                    {plan.duration || 'Unlimited high speed'}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: '32px',
-                      fontWeight: 900,
-                      color: '#16A34A',
-                      marginBottom: '16px',
-                    }}
-                  >
-                    {formatPrice(plan.price)}
+                  <div style={{ fontSize: '12.5px', color: '#3B5D94', fontWeight: 600 }}>
+                    {plan.duration || 'Unlimited fast speed'}
+                    {plan.devices && Number(plan.devices) > 1 ? ` • ${plan.devices} Devices` : ''}
                   </div>
                 </div>
 
-                <Link
-                  href="/packages"
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    padding: '10px 0',
-                    textAlign: 'center',
-                    borderRadius: '8px',
-                    background: isPopular ? '#16A34A' : '#F1F5F9',
-                    color: isPopular ? '#FFFFFF' : '#334155',
-                    fontSize: '13.5px',
-                    fontWeight: 700,
-                    textDecoration: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  Buy Now →
-                </Link>
-              </div>
+                <div style={{
+                  background: 'linear-gradient(180deg, #0099FF 0%, #0354B8 100%)',
+                  padding: '16px 14px 18px',
+                  borderRadius: '42% 42% 0 0 / 16px 16px 0 0',
+                  textAlign: 'center',
+                }}>
+                  {isPopular && (
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: '#E0F2FE', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>
+                      ★ Popular Choice
+                    </div>
+                  )}
+                  <div style={{
+                    display: 'inline-block',
+                    background: '#FFFFFF',
+                    color: '#062B66',
+                    fontSize: '20px',
+                    fontWeight: 900,
+                    padding: '5px 22px',
+                    borderRadius: '999px',
+                    boxShadow: '0 3px 10px rgba(0,0,0,0.14)',
+                    marginBottom: 8,
+                  }}>
+                    {formatPrice(plan.price)}
+                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#FFFFFF' }}>
+                    Buy Now →
+                  </div>
+                </div>
+              </Link>
             );
           })}
         </div>
       </section>
 
       {/* ── 3 EASY STEPS ── */}
-      <section
-        style={{
-          padding: '40px 20px',
-          maxWidth: '860px',
-          margin: '0 auto',
-        }}
-      >
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <h2
-            style={{
-              fontSize: 'clamp(20px, 3.5vw, 26px)',
-              fontWeight: 800,
-              color: '#0F172A',
-              margin: '0 0 6px',
-            }}
-          >
+      <section style={{ padding: '24px 20px 36px', maxWidth: '880px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <h2 style={{ fontSize: 'clamp(20px, 3.5vw, 26px)', fontWeight: 900, color: '#062B66', margin: '0 0 6px' }}>
             How to Connect in 3 Steps
           </h2>
-          <p style={{ fontSize: '13.5px', color: '#64748B', margin: 0 }}>
-            Connect to any My Collective Sub hotspot within seconds.
+          <p style={{ fontSize: '13.5px', color: '#3B5D94', margin: 0 }}>
+            Get online on any MyCollectiveSub hotspot in seconds.
           </p>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '16px',
-          }}
-        >
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '20px',
-              border: '1px solid #E2E8F0',
-            }}
-          >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+          {[
+            { num: '1', title: 'Connect Wi-Fi', desc: 'Open Wi-Fi on your phone or laptop and select the MyCollectiveSub hotspot.' },
+            { num: '2', title: 'Choose a Pass', desc: `Pick a plan from ${formatPrice(lowestPrice)} and pay easily via card, wallet, or bank transfer.` },
+            { num: '3', title: 'Browse Immediately', desc: 'Enter your voucher code (or auto-login from checkout) and start browsing.' },
+          ].map((step) => (
             <div
+              key={step.num}
               style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                background: '#DCFCE7',
-                color: '#15803D',
-                fontWeight: 900,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '12px',
+                background: '#FFFFFF',
+                borderRadius: '18px',
+                padding: '20px',
+                border: '1.5px solid #CFE5FF',
+                boxShadow: '0 6px 18px rgba(6, 43, 102, 0.06)',
               }}
             >
-              1
+              <div
+                style={{
+                  width: '34px', height: '34px', borderRadius: '10px',
+                  background: '#E6F2FF', color: '#035EC8', fontWeight: 900,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px',
+                }}
+              >
+                {step.num}
+              </div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#062B66', marginBottom: '4px' }}>
+                {step.title}
+              </div>
+              <p style={{ fontSize: '13px', color: '#3B5D94', margin: 0, lineHeight: 1.55 }}>
+                {step.desc}
+              </p>
             </div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>
-              Connect Wi-Fi
-            </div>
-            <p style={{ fontSize: '13px', color: '#64748B', margin: 0, lineHeight: 1.5 }}>
-              Open your phone Wi-Fi settings and choose <strong>My Collective Sub</strong>.
-            </p>
-          </div>
-
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '20px',
-              border: '1px solid #E2E8F0',
-            }}
-          >
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                background: '#DCFCE7',
-                color: '#15803D',
-                fontWeight: 900,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '12px',
-              }}
-            >
-              2
-            </div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>
-              Choose a Pass
-            </div>
-            <p style={{ fontSize: '13px', color: '#64748B', margin: 0, lineHeight: 1.5 }}>
-              Select a plan from ₦100 or pay easily online using your card or bank transfer.
-            </p>
-          </div>
-
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '20px',
-              border: '1px solid #E2E8F0',
-            }}
-          >
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                background: '#DCFCE7',
-                color: '#15803D',
-                fontWeight: 900,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '12px',
-              }}
-            >
-              3
-            </div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>
-              Browse Immediately
-            </div>
-            <p style={{ fontSize: '13px', color: '#64748B', margin: 0, lineHeight: 1.5 }}>
-              Enter your voucher PIN code and start enjoying high-speed internet instantly.
-            </p>
-          </div>
+          ))}
         </div>
       </section>
 
-      {/* ── SIMPLE CONTACT & LOCATION CARD ── */}
-      <section
-        style={{
-          padding: '36px 20px',
-          maxWidth: '860px',
-          margin: '0 auto',
-        }}
-      >
+      {/* ── FLYER CONTACT & SUPPORT BAR ── */}
+      <section style={{ padding: '20px 20px 40px', maxWidth: '880px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+          <span style={{
+            display: 'inline-block',
+            background: 'linear-gradient(90deg, #062B66, #0088FF)',
+            color: '#FFFFFF',
+            fontSize: '12px',
+            fontWeight: 800,
+            padding: '5px 20px',
+            borderRadius: '999px',
+          }}>
+            For More Information
+          </span>
+        </div>
+
         <div
           style={{
             background: '#FFFFFF',
-            borderRadius: '16px',
-            border: '1px solid #E2E8F0',
-            padding: '28px 24px',
+            borderRadius: '20px',
+            border: '1.5px solid #CFE5FF',
+            padding: '22px 24px',
+            boxShadow: '0 8px 24px rgba(6, 43, 102, 0.08)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '18px',
-            boxShadow: '0 2px 10px -2px rgba(0,0,0,0.04)',
+            gap: '16px',
+            alignItems: 'center',
           }}
         >
-          <div style={{ fontSize: '18px', fontWeight: 800, color: '#0F172A' }}>
-            Katsina Hotspot Office &amp; Support
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center',
+            gap: '14px', fontSize: '16px', fontWeight: 900, color: '#062B66',
+          }}>
+            <a href="tel:08123725673" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#062B66', textDecoration: 'none' }}>
+              <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#062B66', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>☎</span>
+              08123725673
+            </a>
+            <span style={{ color: '#94A3B8' }}>|</span>
+            <a href="https://wa.me/2348038107462" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#062B66', textDecoration: 'none' }}>
+              <span style={{ background: '#16A34A', color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: '999px' }}>WhatsApp</span>
+              08038107462
+            </a>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '16px',
-            }}
-          >
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: '4px' }}>
-                📍 Office Location
-              </div>
-              <div style={{ fontSize: '14.5px', color: '#0F172A', fontWeight: 600, lineHeight: 1.5 }}>
-                156 Abdullahi Sarki Mukhtar Road, Katsina, Katsina State, Nigeria
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: '4px' }}>
-                ✉️ Email &amp; Support Line
-              </div>
-              <a
-                href="mailto:Aabaxzsulyman@gmail.com"
-                style={{
-                  fontSize: '14.5px',
-                  color: '#16A34A',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                }}
-              >
-                Aabaxzsulyman@gmail.com
-              </a>
-            </div>
+          <div style={{ fontSize: '13px', color: '#3B5D94', textAlign: 'center', fontWeight: 600 }}>
+            📍 156 Abdullahi Sarki Mukhtar Road, Katsina &nbsp;•&nbsp; ✉️{' '}
+            <a href="mailto:Aabaxzsulyman@gmail.com" style={{ color: '#035EC8', fontWeight: 700, textDecoration: 'none' }}>
+              Aabaxzsulyman@gmail.com
+            </a>
           </div>
         </div>
       </section>
@@ -562,10 +475,9 @@ export default function LandingPage() {
       {/* ── FOOTER ── */}
       <footer
         style={{
-          background: '#FFFFFF',
-          borderTop: '1px solid #E2E8F0',
-          padding: '24px 20px',
-          marginTop: '20px',
+          background: 'rgba(255, 255, 255, 0.92)',
+          borderTop: '1px solid #CFE5FF',
+          padding: '22px 20px',
         }}
       >
         <div
@@ -578,19 +490,15 @@ export default function LandingPage() {
             flexWrap: 'wrap',
             gap: '12px',
             fontSize: '13px',
-            color: '#64748B',
+            color: '#3B5D94',
           }}
         >
           <div>
-            © {new Date().getFullYear()} <strong>My Collective Sub</strong>. All rights reserved.
+            © {new Date().getFullYear()} <strong>MyCollectiveSub Digital Services</strong>. All rights reserved.
           </div>
-          <div style={{ display: 'flex', gap: '16px' }}>
-            <Link href="/packages" style={{ color: '#475569', textDecoration: 'none' }}>
-              Passes
-            </Link>
-            <Link href="/auth" style={{ color: '#475569', textDecoration: 'none' }}>
-              Account
-            </Link>
+          <div style={{ display: 'flex', gap: '16px', fontWeight: 700 }}>
+            <Link href="/packages" style={{ color: '#035EC8', textDecoration: 'none' }}>Passes</Link>
+            <Link href="/auth" style={{ color: '#035EC8', textDecoration: 'none' }}>Account</Link>
           </div>
         </div>
       </footer>

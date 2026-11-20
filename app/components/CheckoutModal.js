@@ -22,7 +22,14 @@ function AutoConnectRedirect({ code, hotspotUrl, wifiSsid }) {
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
       const customLogin = sp.get('link_login_only') || sp.get('link-login-only');
-      if (customLogin) return customLogin;
+      if (customLogin) {
+        try { sessionStorage.setItem('an_hotspot_login_url', customLogin); } catch {}
+        return customLogin;
+      }
+      try {
+        const savedLogin = sessionStorage.getItem('an_hotspot_login_url');
+        if (savedLogin) return savedLogin;
+      } catch {}
     }
     if (hotspotUrl && !hotspotUrl.includes('localhost') && !hotspotUrl.includes('127.0.0.1')) {
       const cleanUrl = hotspotUrl.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
@@ -137,8 +144,8 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
     online: true,
     has_fallback_vouchers: false,
     fallback_counts: {},
-    hotspot_url: 'asuktech.net',
-    wifi_ssid: 'My Collective Sub Wi-Fi',
+    hotspot_url: 'hotspot.mycollectivesub.net',
+    wifi_ssid: 'MyCollectiveSub Wi-Fi',
   });
 
   const walletBalance = wallet ? parseFloat(wallet.balance) : 0;
@@ -160,8 +167,8 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
             online: !!d.mikrotik.online,
             has_fallback_vouchers: !!d.mikrotik.has_fallback_vouchers,
             fallback_counts: d.mikrotik.fallback_counts || {},
-            hotspot_url: d.mikrotik.hotspot_url || 'asuktech.net',
-            wifi_ssid: d.mikrotik.wifi_ssid || 'My Collective Sub Wi-Fi',
+            hotspot_url: d.mikrotik.hotspot_url || 'hotspot.mycollectivesub.net',
+            wifi_ssid: d.mikrotik.wifi_ssid || 'MyCollectiveSub Wi-Fi',
           });
         }
       })

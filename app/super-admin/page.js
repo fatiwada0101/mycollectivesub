@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { THEME_PALETTES, useBranding } from '../context/BrandingContext';
+import { BrandEmblem } from '../components/BrandMark';
 import {
   TrendingUpIcon,
   WifiIcon,
@@ -129,8 +130,8 @@ export default function SuperAdminPage() {
     pass: '',
     port: '443',
     use_ssl: true,
-    hotspot_url: 'asuktech.net',
-    wifi_ssid: 'African Network Wi-Fi',
+    hotspot_url: 'hotspot.mycollectivesub.net',
+    wifi_ssid: 'MyCollectiveSub Wi-Fi',
   });
   const [syncingHotspot, setSyncingHotspot] = useState(false);
   const [showTutorial, setShowTutorial] = useState(true);
@@ -144,7 +145,7 @@ export default function SuperAdminPage() {
 
   // Branding
   const [brandingForm, setBrandingForm] = useState({
-    app_name: 'African Network', logo_url: '', theme: 'violet', app_url: '',
+    app_name: 'MyCollectiveSub', logo_url: '', theme: 'royalblue', app_url: '',
   });
 
   const [webhookCopied, setWebhookCopied] = useState(false);
@@ -1294,8 +1295,8 @@ export default function SuperAdminPage() {
       }));
       await printVoucherCards(cardVouchers, {
         ...cardOptions,
-        brandName: brandingForm.app_name || 'African Network Wi-Fi',
-        ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+        brandName: brandingForm.app_name || 'MyCollectiveSub Wi-Fi',
+        ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
       });
       showToast(`🖨️ Print dialog opened (${cardVouchers.length} cards)`);
     } catch (err) { showToast('Print error: ' + err.message); }
@@ -1319,8 +1320,8 @@ export default function SuperAdminPage() {
       }));
       await downloadVoucherSheetPdf(cardVouchers, {
         ...cardOptions,
-        brandName: brandingForm.app_name || 'African Network Wi-Fi',
-        ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+        brandName: brandingForm.app_name || 'MyCollectiveSub Wi-Fi',
+        ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
       });
       showToast(`📄 PDF downloaded (${cardVouchers.length} cards)`);
     } catch (err) { showToast('PDF error: ' + err.message); }
@@ -1344,8 +1345,8 @@ export default function SuperAdminPage() {
       }));
       downloadVoucherSheetImage(cardVouchers, {
         ...cardOptions,
-        brandName: brandingForm.app_name || 'African Network Wi-Fi',
-        ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+        brandName: brandingForm.app_name || 'MyCollectiveSub Wi-Fi',
+        ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
       });
       showToast(`🖼️ Image downloaded (${cardVouchers.length} cards)`);
     } catch (err) { showToast('Image error: ' + err.message); }
@@ -1366,7 +1367,7 @@ export default function SuperAdminPage() {
         return new URL(process.env.NEXT_PUBLIC_APP_URL.startsWith('http') ? process.env.NEXT_PUBLIC_APP_URL : `https://${process.env.NEXT_PUBLIC_APP_URL}`).hostname;
       }
     } catch {}
-    return 'www.africannetwork.com';
+    return 'www.mycollectivesub.si';
   })();
 
   const currentApexDomain = (() => {
@@ -1856,7 +1857,7 @@ export default function SuperAdminPage() {
 
     const targetBuyUrl = portalConfig.buyUrl
       || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : '')
-      || 'https://www.africannetwork.com/packages';
+      || 'https://www.mycollectivesub.si/packages';
 
     const t1 = setTimeout(() => {
       setPortalPushProgress(prev => prev.active && prev.status !== 'error' ? {
@@ -1895,7 +1896,7 @@ export default function SuperAdminPage() {
         body: JSON.stringify({
           router_id: selectedRouterId || undefined,
           template_id: portalTemplate,
-          wifi_ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+          wifi_ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
           business_name: portalConfig.businessName || mikrotikForm.wifi_ssid || brandingForm.app_name || '',
           logo_url: portalConfig.logoUrl || brandingForm.logo_url || '',
           contact_footer: portalConfig.contactFooter || '',
@@ -2104,11 +2105,11 @@ export default function SuperAdminPage() {
         <div className="sa-login-card">
           <div className="sa-login-badge-wrap">
             <div className="sa-login-avatar-ring">
-              <ShieldIcon size={28} color="#34A853" />
+              <BrandEmblem size={38} />
             </div>
             <span className="sa-badge sa-badge-obsidian">Super Admin Gateway</span>
           </div>
-          <h1 className="sa-login-title">African Network</h1>
+          <h1 className="sa-login-title">MYCOLLECTIVE<span style={{ color: '#0095FF' }}>SUB</span></h1>
           <p className="sa-login-sub">MikroTik RouterOS &amp; Hotspot Administration</p>
           {authError && <div className="sa-error-alert">{authError}</div>}
           <form onSubmit={handleLogin} className="sa-login-form">
@@ -2144,17 +2145,17 @@ export default function SuperAdminPage() {
       <aside className={`sa-sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sa-brand-section">
           <div className="sa-brand-icon-box">
-            <WifiIcon size={22} color="#FFFFFF" />
+            <BrandEmblem size={26} />
           </div>
           {!sidebarCollapsed && (
             <div className="sa-brand-text">
-              <span className="sa-brand-name">African Network</span>
+              <span className="sa-brand-name">MyCollectiveSub</span>
               <span className="sa-brand-badge">Super Admin</span>
             </div>
           )}
           <button className="sa-collapse-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="2">
               {sidebarCollapsed
                 ? <polyline points="9 18 15 12 9 6" />
                 : <polyline points="15 18 9 12 15 6" />}
@@ -2170,7 +2171,7 @@ export default function SuperAdminPage() {
               <button key={tab.id} className={`sa-nav-button ${active ? 'active' : ''}`}
                 onClick={() => { setActiveTab(tab.id); setSidebarOpen(false); }}>
                 <div className="sa-nav-icon-wrap">
-                  <Icon size={18} color={active ? '#34A853' : '#8E8E93'} />
+                  <Icon size={18} color={active ? '#0095FF' : '#CBD5E1'} />
                 </div>
                 <span className="sa-nav-label">{tab.label}</span>
                 {tab.id === 'sessions' && sessions.length > 0 && (

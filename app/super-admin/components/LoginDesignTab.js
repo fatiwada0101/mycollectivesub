@@ -29,6 +29,71 @@ export default function LoginDesignTab({
   const [portalConfig, setPortalConfig] = useState({
     logoUrl: '', businessName: '', contactFooter: '', primaryColor: '', buyUrl: '',
   });
+  const [portalPlans, setPortalPlans] = useState([]);
+  const [savingPrices, setSavingPrices] = useState(false);
+
+  const loadPortalAndPlans = async () => {
+    try {
+      const [settingsRes, plansRes] = await Promise.all([
+        fetch('/api/super-admin/settings', { headers: adminHeaders() }),
+        fetch('/api/super-admin/plans'),
+      ]);
+      if (settingsRes.ok) {
+        const sData = await settingsRes.json();
+        const pt = (Array.isArray(sData) ? sData.find(r => r.key === 'portal_template')?.value : sData?.portal_template) || null;
+        if (pt) {
+          if (pt.templateId) setPortalTemplate(pt.templateId);
+          setPortalConfig({
+            logoUrl: pt.logoUrl || '',
+            businessName: pt.businessName || '',
+            contactFooter: pt.contactFooter || '',
+            primaryColor: pt.primaryColor || '',
+            buyUrl: pt.buyUrl || '',
+          });
+        }
+      }
+      if (plansRes.ok) {
+        const pList = await plansRes.json();
+        if (Array.isArray(pList)) setPortalPlans(pList.slice(0, 4));
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadPortalAndPlans();
+  }, []);
+
+  const handleSavePortalPrices = async () => {
+    if (savingPrices || portalPlans.length === 0) return;
+    setSavingPrices(true);
+    try {
+      for (const p of portalPlans) {
+        await fetch('/api/super-admin/plans', {
+          method: 'POST',
+          headers: adminHeaders(),
+          body: JSON.stringify({
+            id: p.id,
+            name: p.name,
+            speed: p.speed || '',
+            price: Number(p.price),
+            duration: p.duration,
+            popular: !!p.popular,
+            active: p.active !== false,
+            sort_order: Number(p.sort_order) || 0,
+            devices: Number(p.devices) || 1,
+            upload_speed: p.upload_speed || '12M',
+            download_speed: p.download_speed || '12M',
+          }),
+        });
+      }
+      setPortalPreviewKey(k => k + 1);
+      showToast('✅ Plan prices updated across app checkout, login design & live router!');
+    } catch {
+      showToast('❌ Failed to update plan prices');
+    } finally {
+      setSavingPrices(false);
+    }
+  };
   const [portalPushing, setPortalPushing] = useState(false);
   const [portalPreviewMode, setPortalPreviewMode] = useState('phone');
   const [portalPreviewKey, setPortalPreviewKey] = useState(0);
@@ -101,7 +166,7 @@ export default function LoginDesignTab({
         headers: { ...adminHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           template_id: portalTemplate,
-          wifi_ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+          wifi_ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
           business_name: portalConfig.businessName || mikrotikForm.wifi_ssid || brandingForm.app_name || '',
           logo_url: portalConfig.logoUrl || brandingForm.logo_url || '',
           contact_footer: portalConfig.contactFooter || '',
@@ -269,6 +334,7 @@ export default function LoginDesignTab({
                         body: JSON.stringify({ key: 'portal_template', value: fullConfig }),
                       });
                       if (res.ok) {
+                        setPortalPreviewKey(k => k + 1);
                         showToast('✅ Login design settings saved!');
                         fetchChangeHistory?.();
                       } else {
@@ -283,6 +349,46 @@ export default function LoginDesignTab({
                 </button>
               </div>
             </div>
+
+            {/* ── Portal Plan Card Prices (Live Synced) ── */}
+            {portalPlans.length > 0 && (
+              <div className="sa-glass-card" style={{ marginTop: 24 }}>
+                <div className="sa-card-header">
+                  <div>
+                    <h3 className="sa-card-title">{'💳'} Portal Plan Card Prices</h3>
+                    <p className="sa-card-sub">Synced automatically with DB Plans, App Checkout &amp; Router Login Page</p>
+                  </div>
+                  <span className="sa-badge sa-badge-purple">Auto-Sync</span>
+                </div>
+                <div className="sa-form-grid-2">
+                  {portalPlans.map((p, idx) => (
+                    <div key={p.id} className="sa-field-box" style={{ background: '#F4F9FF', padding: 12, borderRadius: 12, border: '1px solid #CFE5FF' }}>
+                      <label>{p.name} ({p.duration})</label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          value={p.name}
+                          onChange={e => setPortalPlans(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                          placeholder="Plan Label"
+                          style={{ flex: 2 }}
+                        />
+                        <input
+                          type="number"
+                          value={p.price}
+                          onChange={e => setPortalPlans(prev => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
+                          placeholder="Price ₦"
+                          style={{ flex: 1 }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="sa-plan-form-footer" style={{ marginTop: 14 }}>
+                  <button className="sa-btn-primary" onClick={handleSavePortalPrices} disabled={savingPrices}>
+                    {savingPrices ? 'Syncing Prices...' : '⚡ Update Prices & Sync Login Page'}
+                  </button>
+                </div>
+              </div>
+            )}
 
 
             {/* ── Live Preview ── */}
@@ -336,12 +442,12 @@ export default function LoginDesignTab({
                       const name = portalConfig.businessName || mikrotikForm.wifi_ssid || brandingForm.app_name || 'MYCOLLECTIVESUB';
                       const targetBuyUrl = portalConfig.buyUrl
                         || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : '')
-                        || 'https://www.africannetwork.com/packages';
+                        || 'https://www.mycollectivesub.si/packages';
 
                       // We build the preview HTML via the API using a GET request
                       const params = new URLSearchParams({
                         template_id: portalTemplate,
-                        wifi_ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+                        wifi_ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
                         business_name: name,
                         logo_url: portalConfig.logoUrl || brandingForm.logo_url || '',
                         contact_footer: portalConfig.contactFooter || '',
@@ -472,7 +578,7 @@ fetch('/api/mikrotik/push-login-page?${params.toString()}')
                     const params = new URLSearchParams({
                       download: 'true',
                       template_id: portalTemplate,
-                      wifi_ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+                      wifi_ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
                       business_name: portalConfig.businessName || mikrotikForm.wifi_ssid || brandingForm.app_name || '',
                       logo_url: portalConfig.logoUrl || brandingForm.logo_url || '',
                       contact_footer: portalConfig.contactFooter || '',
@@ -494,7 +600,7 @@ fetch('/api/mikrotik/push-login-page?${params.toString()}')
                       || 'https://www.mycollectivesub.si/packages';
                     const params = new URLSearchParams({
                       template_id: portalTemplate,
-                      wifi_ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+                      wifi_ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
                       business_name: portalConfig.businessName || mikrotikForm.wifi_ssid || brandingForm.app_name || '',
                       logo_url: portalConfig.logoUrl || brandingForm.logo_url || '',
                       contact_footer: portalConfig.contactFooter || '',

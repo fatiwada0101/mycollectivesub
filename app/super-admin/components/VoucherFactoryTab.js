@@ -341,8 +341,8 @@ export default function VoucherFactoryTab({
       }));
       await printVoucherCards(cardVouchers, {
         ...cardOptions,
-        brandName: brandingForm.app_name || 'African Network Wi-Fi',
-        ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+        brandName: brandingForm.app_name || 'MyCollectiveSub Wi-Fi',
+        ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
       });
       showToast(`🖨️ Print dialog opened (${cardVouchers.length} cards)`);
     } catch (err) { showToast('Print error: ' + err.message); }
@@ -366,8 +366,8 @@ export default function VoucherFactoryTab({
       }));
       await downloadVoucherSheetPdf(cardVouchers, {
         ...cardOptions,
-        brandName: brandingForm.app_name || 'African Network Wi-Fi',
-        ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+        brandName: brandingForm.app_name || 'MyCollectiveSub Wi-Fi',
+        ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
       });
       showToast(`📄 PDF downloaded (${cardVouchers.length} cards)`);
     } catch (err) { showToast('PDF error: ' + err.message); }
@@ -391,8 +391,8 @@ export default function VoucherFactoryTab({
       }));
       downloadVoucherSheetImage(cardVouchers, {
         ...cardOptions,
-        brandName: brandingForm.app_name || 'African Network Wi-Fi',
-        ssid: mikrotikForm.wifi_ssid || 'African Network Wi-Fi',
+        brandName: brandingForm.app_name || 'MyCollectiveSub Wi-Fi',
+        ssid: mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi',
       });
       showToast(`🖼️ Image downloaded (${cardVouchers.length} cards)`);
     } catch (err) { showToast('Image error: ' + err.message); }
@@ -1271,8 +1271,8 @@ export default function VoucherFactoryTab({
                 voucherPage * (voucherPageSize === 'all' ? 99999 : Number(voucherPageSize) || 20)
               )}
               allVouchers={getProcessedVouchers()}
-              brandName={brandingForm?.app_name || 'African Network Wi-Fi'}
-              ssid={mikrotikForm?.wifi_ssid || 'African Network Wi-Fi'}
+              brandName={brandingForm?.app_name || 'MyCollectiveSub Wi-Fi'}
+              ssid={mikrotikForm?.wifi_ssid || 'MyCollectiveSub Wi-Fi'}
               defaultPlanName={voucherGen?.plan_name || '1 Day Pass'}
               defaultPrice={voucherGen?.price || 100}
               defaultExpiry={genResult?.expiry_label || voucherGen?.custom_duration || '24h'}

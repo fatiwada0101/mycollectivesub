@@ -63,18 +63,43 @@ export default function PackagesPage() {
   useEffect(() => {
     const fetchPlans = async () => {
       try {
+        if (typeof window !== 'undefined') {
+          const sp = new URLSearchParams(window.location.search);
+          const loginUrl = sp.get('link_login_only') || sp.get('link-login-only');
+          if (loginUrl) {
+            try { sessionStorage.setItem('an_hotspot_login_url', loginUrl); } catch {}
+          }
+        }
         const [plansRes, schedRes] = await Promise.all([
           fetch('/api/super-admin/plans'),
           fetch('/api/settings/scheduler').catch(() => null)
         ]);
-        if (plansRes.ok) {
-          const data = await plansRes.json();
-          setPlans(data);
-        }
+        let activeRules = [];
         if (schedRes && schedRes.ok) {
           const sData = await schedRes.json();
           if (sData.active_rules) {
+            activeRules = sData.active_rules;
             setSchedulerRules(sData.active_rules);
+          }
+        }
+        if (plansRes.ok) {
+          const data = await plansRes.json();
+          setPlans(data);
+          if (typeof window !== 'undefined' && Array.isArray(data) && data.length > 0) {
+            const sp = new URLSearchParams(window.location.search);
+            const targetId = sp.get('plan_id') || sp.get('plan');
+            if (targetId) {
+              const match = data.find(p => String(p.id) === targetId || String(p.name || '').toLowerCase() === targetId.toLowerCase());
+              if (match) {
+                const topRule = activeRules.length > 0
+                  ? [...activeRules].sort((a, b) => (b.discount_percent || 0) - (a.discount_percent || 0))[0]
+                  : null;
+                const discount = topRule?.discount_percent || 0;
+                const planToBuy = discount > 0 ? { ...match, price: Math.round(match.price * (1 - discount / 100)) } : match;
+                setSelectedPlan(planToBuy);
+                setCheckoutOpen(true);
+              }
+            }
           }
         }
       } catch (err) {
@@ -219,7 +244,7 @@ export default function PackagesPage() {
                 <div className="pass-card-top">
                   <div className="pass-badge-group">
                     <div className="pass-wifi-icon-badge">
-                      <WifiIcon size={20} color="#34A853" />
+                      <WifiIcon size={20} color="#0088FF" />
                     </div>
                     <span className={`pass-tag-pill ${plan.popular ? 'popular' : ''}`}>
                       {plan.duration}

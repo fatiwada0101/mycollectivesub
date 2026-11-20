@@ -784,12 +784,12 @@ export default function MikroTikConfigTab({
               <div className="sa-form-grid-2" style={{ marginBottom: 16 }}>
                 <div className="sa-field-box">
                   <label>Hotspot Portal Domain *</label>
-                  <input value={mikrotikForm.hotspot_url || ''} onChange={e => setMikrotikForm({ ...mikrotikForm, hotspot_url: e.target.value })} placeholder="asuktech.net" />
+                  <input value={mikrotikForm.hotspot_url || ''} onChange={e => setMikrotikForm({ ...mikrotikForm, hotspot_url: e.target.value })} placeholder="hotspot.mycollectivesub.net" />
                   <span style={{ fontSize: '11px', color: '#71717A', marginTop: 4 }}>Captive portal redirect domain (sets dns-name on router)</span>
                 </div>
                 <div className="sa-field-box">
                   <label>Wi-Fi SSID (Broadcast Name) *</label>
-                  <input value={mikrotikForm.wifi_ssid || ''} onChange={e => setMikrotikForm({ ...mikrotikForm, wifi_ssid: e.target.value })} placeholder="African Network Wi-Fi" />
+                  <input value={mikrotikForm.wifi_ssid || ''} onChange={e => setMikrotikForm({ ...mikrotikForm, wifi_ssid: e.target.value })} placeholder="MyCollectiveSub Wi-Fi" />
                   <span style={{ fontSize: '11px', color: '#71717A', marginTop: 4 }}>Sets SSID on all WiFi interfaces on the router</span>
                 </div>
                 <div className="sa-field-box">
@@ -949,10 +949,10 @@ export default function MikroTikConfigTab({
                   color: '#C4B5FD',
                   wordBreak: 'break-all',
                 }}>
-                  {portalConfig.buyUrl || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : 'https://www.africannetwork.com/packages')}?mac=$(mac)&ip=$(ip)&link-login-only=$(link-login-only-esc)&link-orig=$(link-orig-esc)
+                  {portalConfig.buyUrl || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : 'https://www.mycollectivesub.si/packages')}?mac=$(mac)&ip=$(ip)&link-login-only=$(link-login-only-esc)&link-orig=$(link-orig-esc)
                 </code>
                 <p style={{ margin: '8px 0 0', fontSize: 11.5, color: '#888' }}>
-                  When connected to Wi-Fi without a voucher, clicking this button takes users directly to <strong>{portalConfig.buyUrl || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : 'www.africannetwork.com/packages')}</strong> to purchase a plan, after which they are automatically authenticated.
+                  When connected to Wi-Fi without a voucher, clicking this button takes users directly to <strong>{portalConfig.buyUrl || (brandingForm.app_url ? `${brandingForm.app_url.replace(/\/+$/, '')}/packages` : 'www.mycollectivesub.si/packages')}</strong> to purchase a plan, after which they are automatically authenticated.
                 </p>
               </div>
 

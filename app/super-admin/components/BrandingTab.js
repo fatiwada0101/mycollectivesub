@@ -31,7 +31,7 @@ export default function BrandingTab({
         <div className="sa-form-grid-2">
           <div className="sa-field-box">
             <label>App Name *</label>
-            <input value={brandingForm.app_name} onChange={e => setBrandingForm({ ...brandingForm, app_name: e.target.value })} placeholder="African Network" />
+            <input value={brandingForm.app_name} onChange={e => setBrandingForm({ ...brandingForm, app_name: e.target.value })} placeholder="MyCollectiveSub" />
           </div>
           <div className="sa-field-box">
             <label>Logo URL (optional)</label>
@@ -42,7 +42,7 @@ export default function BrandingTab({
             <input
               value={brandingForm.app_url || ''}
               onChange={e => setBrandingForm({ ...brandingForm, app_url: e.target.value })}
-              placeholder="https://africannetwork.com"
+              placeholder="https://www.mycollectivesub.si"
             />
             <span style={{ fontSize: '11px', color: '#71717A', marginTop: 4 }}>
               Public URL of this web application (e.g. https://mybrand.com). Used by the captive portal for voucher purchasing, redirects, and automated walled-garden bypass.

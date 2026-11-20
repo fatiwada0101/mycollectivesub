@@ -69,7 +69,7 @@ export default function TenantsTab({ authHeaders }) {
           branding: {
             brandName: form.brandName || form.name,
             themeColor: form.themeColor,
-            supportEmail: form.contact_email || 'support@africannetwork.com'
+            supportEmail: form.contact_email || 'support@mycollectivesub.si'
           }
         })
       });
@@ -173,7 +173,7 @@ export default function TenantsTab({ authHeaders }) {
                     <td style={{ padding: '12px 16px', fontWeight: 600 }}>{t.name}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <code style={{ background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: '4px' }}>
-                        {t.slug}.africannetwork.com
+                        {t.slug}.mycollectivesub.si
                       </code>
                     </td>
                     <td style={{ padding: '12px 16px', color: t.custom_domain ? '#3b82f6' : 'var(--text-muted)' }}>

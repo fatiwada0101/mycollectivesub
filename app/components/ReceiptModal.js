@@ -197,7 +197,7 @@ export default function ReceiptModal({
       } else {
         await navigator.share({
           title: `${brandName} - Account Statement`,
-          text: `African Network Account Statement - Balance: ${formatCurrency(data.walletBalance || 0)}`,
+          text: `MyCollectiveSub Account Statement - Balance: ${formatCurrency(data.walletBalance || 0)}`,
         });
       }
       showFeedback('✓ Shared successfully!');

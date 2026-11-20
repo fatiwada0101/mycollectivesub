@@ -21,12 +21,12 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
   const routerPort = mikrotikForm.port || '443';
   const apiUser = mikrotikForm.user || 'admin2';
   const apiPass = mikrotikForm.pass || 'YourStrongPassword123!';
-  const hotspotUrl = (mikrotikForm.hotspot_url || 'asuktech.net').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
-  const wifiSsid = mikrotikForm.wifi_ssid || 'African Network Wi-Fi';
+  const hotspotUrl = (mikrotikForm.hotspot_url || 'hotspot.mycollectivesub.net').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  const wifiSsid = mikrotikForm.wifi_ssid || 'MyCollectiveSub Wi-Fi';
 
   // 1. Cloud / Vercel Script
   const cloudTerminalScript = `# ================================================================
-# AFRICAN NETWORK — VERCEL & CLOUD GLOBAL DOMAIN SCRIPT (RouterOS v7)
+# MYCOLLECTIVESUB — VERCEL & CLOUD GLOBAL DOMAIN SCRIPT (RouterOS v7)
 # Run in WinBox -> New Terminal on your MikroTik router
 # ================================================================
 
@@ -44,7 +44,7 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
 /ip firewall filter add chain=input protocol=tcp dst-port=${routerPort} action=accept comment="Allow REST API for Vercel Cloud" place-before=1
 
 # 5. Create Dedicated Service Account
-/user add name="${apiUser}" password="${apiPass}" group=full comment="African Network Cloud Integration"
+/user add name="${apiUser}" password="${apiPass}" group=full comment="MyCollectiveSub Cloud Integration"
 
 # 6. Configure Hotspot Server Profile Captive Portal URL (${hotspotUrl})
 /ip hotspot profile set [find default=yes] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap
@@ -56,7 +56,7 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
 
   // 2. Local LAN Script
   const localTerminalScript = `# ================================================================
-# AFRICAN NETWORK — LOCAL LAN / PC SCRIPT (RouterOS v7)
+# MYCOLLECTIVESUB — LOCAL LAN / PC SCRIPT (RouterOS v7)
 # For testing locally with router IP 192.168.88.1 or local bridge
 # ================================================================
 
@@ -65,7 +65,7 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
 /ip service set www port=80 disabled=no
 
 # 2. Create Dedicated Service Account
-/user add name="${apiUser}" password="${apiPass}" group=full comment="African Network Local Integration"
+/user add name="${apiUser}" password="${apiPass}" group=full comment="MyCollectiveSub Local Integration"
 
 # 3. Configure Hotspot Server Profile Captive Portal URL (${hotspotUrl})
 /ip hotspot profile set [find default=yes] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap
@@ -308,7 +308,7 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
                       abcdef123456.sn.mynetname.net
                     </div>
                   </li>
-                  <li>Copy that <code>*.sn.mynetname.net</code> domain. This will be your <strong>Router IP / Host</strong> in African Network!</li>
+                  <li>Copy that <code>*.sn.mynetname.net</code> domain. This will be your <strong>Router IP / Host</strong> in MyCollectiveSub!</li>
                 </ol>
 
                 {/* If DNS Name is blank troubleshooting */}
@@ -406,7 +406,7 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
                     /ip firewall filter add chain=input protocol=tcp dst-port=80 action=accept comment=&quot;Allow HTTP REST API&quot; place-before=1
                   </pre>
                   <span style={{ fontSize: '11.5px', color: '#1E40AF', marginTop: 4, display: 'block' }}>
-                    Then in African Network settings: set <strong>Port</strong> to <code>80</code> and <strong>uncheck</strong> &ldquo;Use SSL / HTTPS&rdquo;.
+                    Then in MyCollectiveSub settings: set <strong>Port</strong> to <code>80</code> and <strong>uncheck</strong> &ldquo;Use SSL / HTTPS&rdquo;.
                   </span>
                 </div>
               </div>
@@ -540,7 +540,7 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
             )}
           </div>
 
-          {/* Cloud Step 5: Save & Test in African Network */}
+          {/* Cloud Step 5: Save & Test in MyCollectiveSub */}
           <div
             style={{
               background: '#F9FAFB',

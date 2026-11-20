@@ -39,7 +39,7 @@ export default function WalledGardenTab({
         return new URL(process.env.NEXT_PUBLIC_APP_URL.startsWith('http') ? process.env.NEXT_PUBLIC_APP_URL : `https://${process.env.NEXT_PUBLIC_APP_URL}`).hostname;
       }
     } catch {}
-    return 'www.africannetwork.com';
+    return 'www.mycollectivesub.si';
   })();
 
   const currentApexDomain = (() => {
@@ -303,19 +303,19 @@ export default function WalledGardenTab({
 
             {/* Master Activation Banner */}
             <div className="sa-glass-card" style={{
-              background: 'linear-gradient(135deg, rgba(114, 87, 255, 0.15) 0%, rgba(16, 185, 129, 0.1) 100%)',
-              border: '1px solid rgba(114, 87, 255, 0.35)',
-              boxShadow: '0 8px 32px rgba(114, 87, 255, 0.15)',
+              background: 'linear-gradient(135deg, #062B66 0%, #035EC8 100%)',
+              border: '1px solid #0088FF',
+              boxShadow: '0 8px 32px rgba(0, 136, 255, 0.22)',
               marginBottom: 20,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 22 }}>⚡</span>
-                    <h3 className="sa-card-title" style={{ color: '#FFFFFF', fontSize: 18 }}>All-in-One Walled Garden Bypass</h3>
-                    <span className="sa-badge sa-badge-purple" style={{ fontSize: 11 }}>Active on Router: {walledGardenEntries.length}</span>
+                    <h3 className="sa-card-title" style={{ color: '#FFFFFF', fontSize: 18 }}>All-in-One Walled Garden &amp; Free Banking</h3>
+                    <span className="sa-badge" style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', color: '#FFFFFF' }}>Active on Router: {walledGardenEntries.length}</span>
                   </div>
-                  <p className="sa-card-sub" style={{ color: '#D4D4D8', maxWidth: 680 }}>
+                  <p className="sa-card-sub" style={{ color: '#E0F2FE', maxWidth: 680 }}>
                     Enable all Nigerian commercial banks, digital fintechs (OPay, PalmPay, Moniepoint, Kuda), payment switches (Paystack, Flutterwave, Interswitch, Remita), and hidden 3D Secure / ACS verification links (Mastercard, Visa, Verve, CardinalCommerce) so all users can make payments and use bank apps freely before Wi-Fi login.
                   </p>
                 </div>

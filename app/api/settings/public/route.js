@@ -44,14 +44,14 @@ export async function GET() {
     let activeGateway = 'flutterwave'; // default
 
     let branding = {
-      app_name: 'African Network',
+      app_name: 'MyCollectiveSub',
       logo_url: '',
-      theme: 'violet',
+      theme: 'royalblue',
       app_url: process.env.NEXT_PUBLIC_APP_URL || '',
     };
 
     let hotspotUrl = '';
-    let wifiSsid = 'African Network Wi-Fi';
+    let wifiSsid = 'MyCollectiveSub Wi-Fi';
 
     if (settings) {
       for (const s of settings) {
@@ -110,14 +110,14 @@ export async function GET() {
       activeGateway: 'flutterwave',
       flutterwave: { publicKey: '', enabled: false },
       monnify: { apiKey: '', contractCode: '', enabled: false, isTest: true },
-      branding: { app_name: 'African Network', logo_url: '', theme: 'violet' },
+      branding: { app_name: 'MyCollectiveSub', logo_url: '', theme: 'royalblue' },
       mikrotik: {
         configured: false,
         online: false,
         has_fallback_vouchers: false,
         fallback_counts: {},
-        hotspot_url: 'asuktech.net',
-        wifi_ssid: 'African Network Wi-Fi',
+        hotspot_url: 'hotspot.mycollectivesub.net',
+        wifi_ssid: 'MyCollectiveSub Wi-Fi',
       },
     });
   }
