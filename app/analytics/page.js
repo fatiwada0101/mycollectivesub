@@ -228,7 +228,7 @@ export default function AnalyticsPage() {
                 cy="60"
                 r="46"
                 fill="none"
-                stroke="#10B981"
+                stroke="#0088FF"
                 strokeWidth="16"
                 strokeDasharray={`${depDash} ${circum}`}
                 strokeDashoffset="0"
@@ -346,7 +346,7 @@ export default function AnalyticsPage() {
         <div className="category-card" onClick={() => router.push('/packages')}>
           <div className="category-card-top">
             <div className="category-icon-box">
-              <WifiIcon size={18} color="#34A853" />
+              <WifiIcon size={18} color="#0088FF" />
             </div>
             <span className="category-count-badge">{hourlyPasses.count} passes</span>
           </div>
@@ -359,7 +359,7 @@ export default function AnalyticsPage() {
         <div className="category-card" onClick={() => router.push('/packages')}>
           <div className="category-card-top">
             <div className="category-icon-box">
-              <WalletIcon size={18} color="#10B981" />
+              <WalletIcon size={18} color="#035EC8" />
             </div>
             <span className="category-count-badge">{dailyPasses.count} passes</span>
           </div>

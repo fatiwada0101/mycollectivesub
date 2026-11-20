@@ -62,7 +62,7 @@
   --shadow-subtle: 0 4px 20px rgba(0, 0, 0, 0.4);
   --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.5);
   --shadow-dock: 0 16px 40px rgba(0, 0, 0, 0.6);
-  --shadow-violet: 0 14px 34px -4px rgba(52, 168, 83, 0.5);
+  --shadow-violet: 0 14px 34px -4px rgba(0, 136, 255, 0.42);
 }
 
 /* Smooth transition for theme switches */
@@ -147,7 +147,7 @@ body.dark, html.dark body, [data-theme="dark"] body {
 
 .dark .pass-wifi-icon-badge,
 [data-theme="dark"] .pass-wifi-icon-badge {
-  background: rgba(52, 168, 83, 0.15);
+  background: rgba(0, 136, 255, 0.16);
 }
 
 .dark .pass-tag-pill,
@@ -816,10 +816,10 @@ input, select, textarea {
 }
 
 .quick-action-item:hover .quick-icon-box {
-  border-color: rgba(52, 168, 83, 0.35);
-  box-shadow: 0 10px 24px rgba(52, 168, 83, 0.18);
-  color: #34A853;
-  background: #F8FDF9;
+  border-color: rgba(0, 136, 255, 0.35);
+  box-shadow: 0 10px 24px rgba(0, 136, 255, 0.18);
+  color: #035EC8;
+  background: #EFF6FF;
 }
 
 .quick-label {
@@ -834,8 +834,8 @@ input, select, textarea {
   background: #FFFFFF;
   border-radius: 22px;
   padding: 16px 18px;
-  border: 1.5px solid rgba(52, 168, 83, 0.25);
-  box-shadow: 0 8px 26px rgba(52, 168, 83, 0.1);
+  border: 1.5px solid #BFDBFE;
+  box-shadow: 0 8px 26px rgba(0, 136, 255, 0.12);
   margin-bottom: 24px;
   display: flex;
   align-items: center;
@@ -847,8 +847,8 @@ input, select, textarea {
 }
 
 .live-session-widget:hover {
-  box-shadow: 0 12px 32px rgba(52, 168, 83, 0.16);
-  border-color: rgba(52, 168, 83, 0.4);
+  box-shadow: 0 12px 32px rgba(0, 136, 255, 0.18);
+  border-color: #0088FF;
 }
 
 .live-session-left {
@@ -862,7 +862,7 @@ input, select, textarea {
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: rgba(52, 168, 83, 0.12);
+  background: #EFF6FF;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -877,8 +877,8 @@ input, select, textarea {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #16A34A;
-  box-shadow: 0 0 0 2px #FFFFFF, 0 0 8px #16A34A;
+  background: #0088FF;
+  box-shadow: 0 0 0 2px #FFFFFF, 0 0 8px #0088FF;
   animation: livePulse 1.8s infinite;
 }
 
@@ -1448,7 +1448,7 @@ input, select, textarea {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #34A853;
+  background: linear-gradient(135deg, #062B66 0%, #0088FF 100%);
   color: #FFFFFF;
   display: flex;
   align-items: center;
@@ -1863,7 +1863,7 @@ input, select, textarea {
 }
 
 .btn-success {
-  background: #10B981;
+  background: linear-gradient(135deg, #062B66 0%, #0088FF 100%);
   color: #FFFFFF;
 }
 
@@ -1884,13 +1884,13 @@ input, select, textarea {
   width: 60px;
   height: 60px;
   border-radius: 20px;
-  background: linear-gradient(135deg, rgba(52, 168, 83, 0.16) 0%, rgba(45, 146, 73, 0.06) 100%);
-  border: 1.5px solid rgba(52, 168, 83, 0.25);
+  background: linear-gradient(135deg, rgba(0, 136, 255, 0.14) 0%, rgba(6, 43, 102, 0.06) 100%);
+  border: 1.5px solid #BFDBFE;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 16px;
-  box-shadow: 0 8px 24px rgba(52, 168, 83, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 136, 255, 0.18);
   transition: transform 0.2s ease;
 }
 
@@ -1939,9 +1939,9 @@ input, select, textarea {
 }
 
 .auth-input-box:focus-within {
-  border-color: #34A853;
+  border-color: #0088FF;
   background: #FFFFFF;
-  box-shadow: 0 0 0 3.5px rgba(52, 168, 83, 0.16);
+  box-shadow: 0 0 0 3.5px rgba(0, 136, 255, 0.16);
 }
 
 .auth-input-box input {
@@ -1994,7 +1994,7 @@ input, select, textarea {
 }
 
 .auth-submit-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2D9249 0%, #1E7E34 100%);
+  background: linear-gradient(135deg, #035EC8 0%, #0088FF 100%);
   transform: translateY(-1px);
 }
 
@@ -2021,9 +2021,9 @@ input, select, textarea {
 }
 
 .auth-toast-success {
-  background: #ECFDF5;
-  border: 1px solid #A7F3D0;
-  color: #059669;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: #035EC8;
   padding: 10px 14px;
   border-radius: 12px;
   font-size: 12.5px;
@@ -2228,7 +2228,7 @@ input, select, textarea {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #34A853 0%, #FFB84C 100%);
+  background: linear-gradient(135deg, #062B66 0%, #0088FF 100%);
   color: #FFFFFF;
   display: flex;
   align-items: center;
@@ -2360,8 +2360,8 @@ input, select, textarea {
   gap: 6px;
   font-size: 11px;
   font-weight: 700;
-  color: #10B981;
-  background: rgba(16, 185, 129, 0.1);
+  color: #035EC8;
+  background: #EFF6FF;
   padding: 6px 12px;
   border-radius: 999px;
   width: fit-content;
@@ -2582,7 +2582,7 @@ input, select, textarea {
 
 .pass-instant-tag {
   font-size: 11px;
-  color: #10B981;
+  color: #035EC8;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -2810,8 +2810,8 @@ input, select, textarea {
 }
 
 .checkout-method-option.selected {
-  border-color: #34A853;
-  background: #F6F4FF;
+  border-color: #0088FF;
+  background: #EFF6FF;
 }
 
 .method-radio {
@@ -2826,14 +2826,14 @@ input, select, textarea {
 }
 
 .checkout-method-option.selected .method-radio {
-  border-color: #34A853;
+  border-color: #0088FF;
 }
 
 .checkout-method-option.selected .radio-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #34A853;
+  background: #0088FF;
 }
 
 .method-details {
@@ -2855,8 +2855,8 @@ input, select, textarea {
 .balance-pill {
   font-size: 12px;
   font-weight: 700;
-  color: #059669;
-  background: #ECFDF5;
+  color: #035EC8;
+  background: #E6F2FF;
   padding: 2px 8px;
   border-radius: 6px;
 }
@@ -2907,7 +2907,7 @@ input, select, textarea {
   width: 48px;
   height: 48px;
   border: 4px solid #E2E8F0;
-  border-top-color: #34A853;
+  border-top-color: #0088FF;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 18px;
@@ -2999,7 +2999,7 @@ input, select, textarea {
 
 .ticket-badge {
   display: inline-block;
-  background: #10B981;
+  background: #0088FF;
   color: #FFFFFF;
   font-size: 11px;
   font-weight: 700;
@@ -4488,7 +4488,7 @@ input, select, textarea {
   width: 24px;
   height: 24px;
   border: 3px solid var(--border-light);
-  border-top-color: #34A853;
+  border-top-color: #0088FF;
   border-radius: 50%;
   animation: sa-spin 0.7s linear infinite;
   margin: 0 auto 12px;
@@ -4553,9 +4553,9 @@ input, select, textarea {
 }
 
 .sa-field-box select:focus {
-  border-color: #34A853;
+  border-color: #0088FF;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(114, 87, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(0, 136, 255, 0.12);
 }
 
 /* ── Responsive Rules ── */
@@ -4688,8 +4688,8 @@ input, select, textarea {
 .notif-unread-badge {
   font-size: 11px;
   font-weight: 700;
-  background: var(--accent-surface, #E6F4EA);
-  color: var(--primary, #34A853);
+  background: var(--accent-surface, #EFF6FF);
+  color: var(--primary, #0088FF);
   padding: 3px 10px;
   border-radius: 99px;
 }
@@ -4814,7 +4814,7 @@ input, select, textarea {
 
 /* ── Branding Preview Card ── */
 .sa-branding-preview {
-  background: var(--card-gradient, linear-gradient(135deg, #34A853, #2D9249));
+  background: var(--card-gradient, linear-gradient(135deg, #062B66, #0088FF));
   border-radius: 20px;
   padding: 24px;
   color: #FFF;
@@ -5255,9 +5255,9 @@ input, select, textarea {
 
 .sa-subtab-btn.active {
   color: #FFFFFF;
-  background: linear-gradient(135deg, #34A853 0%, #5438DC 100%);
+  background: linear-gradient(135deg, #062B66 0%, #0088FF 100%);
   border-color: rgba(255, 255, 255, 0.25);
-  box-shadow: 0 4px 18px rgba(114, 87, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 18px rgba(0, 136, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   font-weight: 700;
 }
 
@@ -5308,14 +5308,14 @@ input, select, textarea {
 }
 
 [data-theme="light"] .sa-subtab-btn:hover {
-  color: #34A853;
-  background: rgba(114, 87, 255, 0.08);
-  border-color: rgba(114, 87, 255, 0.3);
+  color: #035EC8;
+  background: #EFF6FF;
+  border-color: #BFDBFE;
 }
 
 [data-theme="light"] .sa-subtab-btn.active {
   color: #FFFFFF;
-  background: linear-gradient(135deg, #34A853 0%, #5438DC 100%);
+  background: linear-gradient(135deg, #062B66 0%, #0088FF 100%);
   border-color: transparent;
 }
 

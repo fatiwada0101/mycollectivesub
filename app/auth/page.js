@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../../lib/supabase';
+import { enableGuestSession } from '../../lib/guest-vouchers.js';
 import BottomNav from '../components/BottomNav';
 import {
   ChevronLeftIcon,
@@ -53,7 +54,7 @@ export default function AuthPage() {
     try {
       if (isLogin) {
         await signIn(email.trim(), password);
-        localStorage.removeItem('asuk_guest_session');
+        enableGuestSession();
         router.push('/');
       } else {
         const data = await signUp(email.trim(), password, fullName.trim());
@@ -64,6 +65,7 @@ export default function AuthPage() {
           setIsLogin(true);
           setPassword('');
         } else {
+          enableGuestSession();
           router.push('/');
         }
       }
@@ -101,6 +103,7 @@ export default function AuthPage() {
     try {
       await signOut();
       localStorage.removeItem('asuk_guest_session');
+      try { sessionStorage.removeItem('asuk_dashboard_active'); } catch {}
       router.push('/auth');
     } catch (err) {
       console.error('Sign out error:', err);
@@ -146,8 +149,8 @@ export default function AuthPage() {
 
         {/* Profile Hero Card */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(52, 168, 83, 0.08) 0%, rgba(20, 24, 28, 0.03) 100%)',
-          border: '1.5px solid rgba(52, 168, 83, 0.2)',
+          background: 'linear-gradient(135deg, rgba(0, 136, 255, 0.08) 0%, rgba(6, 43, 102, 0.03) 100%)',
+          border: '1.5px solid #BFDBFE',
           borderRadius: '26px',
           padding: '28px 20px',
           textAlign: 'center',
@@ -163,7 +166,7 @@ export default function AuthPage() {
             width: '120px',
             height: '120px',
             borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(52, 168, 83, 0.2) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(0, 136, 255, 0.2) 0%, transparent 70%)',
             pointerEvents: 'none',
           }} />
 
@@ -171,7 +174,7 @@ export default function AuthPage() {
             width: '74px',
             height: '74px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+            background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
             color: '#FFFFFF',
             fontSize: '28px',
             fontWeight: 800,
@@ -179,7 +182,7 @@ export default function AuthPage() {
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 14px',
-            boxShadow: '0 8px 24px rgba(52, 168, 83, 0.35)',
+            boxShadow: '0 8px 24px rgba(0, 136, 255, 0.35)',
             border: '3px solid #FFFFFF',
           }}>
             {initial}
@@ -192,8 +195,8 @@ export default function AuthPage() {
             {user.email}
           </p>
 
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '999px', background: 'rgba(52, 168, 83, 0.12)', border: '1px solid rgba(52, 168, 83, 0.3)', color: '#34A853', fontSize: '12px', fontWeight: 700 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34A853', boxShadow: '0 0 8px #34A853' }} />
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '999px', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#035EC8', fontSize: '12px', fontWeight: 700 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#0088FF', boxShadow: '0 0 8px #0088FF' }} />
             Verified Customer
           </div>
         </div>
@@ -224,11 +227,11 @@ export default function AuthPage() {
                 marginTop: '12px',
                 fontSize: '12.5px',
                 fontWeight: 800,
-                color: '#34A853',
+                color: '#035EC8',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                background: 'rgba(52, 168, 83, 0.1)',
+                background: '#EFF6FF',
                 border: 'none',
                 padding: '6px 12px',
                 borderRadius: '999px',
@@ -254,7 +257,7 @@ export default function AuthPage() {
               <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted, #8E8E93)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Wi-Fi Passes
               </span>
-              <div style={{ fontSize: '19px', fontWeight: 800, color: '#34A853', marginTop: '4px' }}>
+              <div style={{ fontSize: '19px', fontWeight: 800, color: '#035EC8', marginTop: '4px' }}>
                 Active
               </div>
             </div>
@@ -264,11 +267,11 @@ export default function AuthPage() {
                 marginTop: '12px',
                 fontSize: '12.5px',
                 fontWeight: 800,
-                color: '#34A853',
+                color: '#035EC8',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                background: 'rgba(52, 168, 83, 0.1)',
+                background: '#EFF6FF',
                 border: 'none',
                 padding: '6px 12px',
                 borderRadius: '999px',
@@ -306,12 +309,12 @@ export default function AuthPage() {
                 width: '38px',
                 height: '38px',
                 borderRadius: '12px',
-                background: 'rgba(52, 168, 83, 0.1)',
+                background: '#EFF6FF',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-                <WalletIcon size={18} color="#34A853" />
+                <WalletIcon size={18} color="#035EC8" />
               </div>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary, #121217)' }}>
                 Wallet &amp; Transactions
@@ -336,12 +339,12 @@ export default function AuthPage() {
                 width: '38px',
                 height: '38px',
                 borderRadius: '12px',
-                background: 'rgba(16, 185, 129, 0.1)',
+                background: '#EFF6FF',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-                <WifiIcon size={18} color="#10B981" />
+                <WifiIcon size={18} color="#0088FF" />
               </div>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary, #121217)' }}>
                 Buy Wi-Fi Passes
@@ -520,7 +523,7 @@ export default function AuthPage() {
           width: '100px',
           height: '100px',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(52, 168, 83, 0.18) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(0, 136, 255, 0.18) 0%, transparent 70%)',
           pointerEvents: 'none',
         }} />
 
@@ -529,15 +532,15 @@ export default function AuthPage() {
           width: '58px',
           height: '58px',
           borderRadius: '18px',
-          background: 'linear-gradient(135deg, rgba(52, 168, 83, 0.15) 0%, rgba(45, 146, 73, 0.05) 100%)',
-          border: '1.5px solid rgba(52, 168, 83, 0.25)',
+          background: 'linear-gradient(135deg, rgba(0, 136, 255, 0.14) 0%, rgba(6, 43, 102, 0.06) 100%)',
+          border: '1.5px solid #BFDBFE',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           margin: '0 auto 16px',
-          boxShadow: '0 8px 20px rgba(52, 168, 83, 0.18)',
+          boxShadow: '0 8px 20px rgba(0, 136, 255, 0.18)',
         }}>
-          <WifiIcon size={26} color="#34A853" />
+          <WifiIcon size={26} color="#0088FF" />
         </div>
 
         <h2 style={{
@@ -585,10 +588,10 @@ export default function AuthPage() {
         {success && (
           <div style={{
             padding: '12px 14px',
-            background: 'rgba(52, 168, 83, 0.1)',
-            border: '1px solid rgba(52, 168, 83, 0.35)',
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
             borderRadius: '14px',
-            color: '#166534',
+            color: '#062B66',
             fontSize: '12.5px',
             fontWeight: 600,
             marginBottom: '16px',
@@ -643,14 +646,14 @@ export default function AuthPage() {
                 style={{
                   width: '100%',
                   padding: '15px',
-                  background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+                  background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                   color: '#FFFFFF',
                   border: 'none',
                   borderRadius: '16px',
                   fontSize: '14.5px',
                   fontWeight: 800,
                   cursor: loading ? 'wait' : 'pointer',
-                  boxShadow: '0 6px 20px rgba(52, 168, 83, 0.35)',
+                  boxShadow: '0 6px 20px rgba(0, 136, 255, 0.35)',
                   transition: 'all 0.2s ease',
                 }}
               >
@@ -669,7 +672,7 @@ export default function AuthPage() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#34A853',
+                  color: '#035EC8',
                   fontSize: '13px',
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -812,14 +815,14 @@ export default function AuthPage() {
                 style={{
                   width: '100%',
                   padding: '15px',
-                  background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+                  background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                   color: '#FFFFFF',
                   border: 'none',
                   borderRadius: '16px',
                   fontSize: '14.5px',
                   fontWeight: 800,
                   cursor: loading ? 'wait' : 'pointer',
-                  boxShadow: '0 6px 20px rgba(52, 168, 83, 0.35)',
+                  boxShadow: '0 6px 20px rgba(0, 136, 255, 0.35)',
                   transition: 'all 0.2s ease',
                 }}
               >
@@ -843,7 +846,7 @@ export default function AuthPage() {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#34A853',
+                      color: '#035EC8',
                       fontSize: '13px',
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -855,13 +858,43 @@ export default function AuthPage() {
               )}
             </form>
 
+            {/* Prominent Guest Dashboard Access Button */}
+            <div style={{ marginTop: '18px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  enableGuestSession();
+                  router.push('/');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '13px 16px',
+                  borderRadius: '16px',
+                  background: '#EFF6FF',
+                  border: '2px solid #0088FF',
+                  color: '#062B66',
+                  fontSize: '14px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 12px rgba(0, 136, 255, 0.12)',
+                }}
+              >
+                <span>🚀</span>
+                <span>Continue as Guest — Open Dashboard →</span>
+              </button>
+            </div>
+
             {/* Wholesale / Reseller Agent Banner */}
             <div style={{
-              marginTop: '22px',
+              marginTop: '18px',
               padding: '14px 16px',
               borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(52, 168, 83, 0.08) 0%, rgba(52, 168, 83, 0.02) 100%)',
-              border: '1px solid rgba(52, 168, 83, 0.2)',
+              background: 'linear-gradient(135deg, rgba(0, 136, 255, 0.08) 0%, rgba(6, 43, 102, 0.03) 100%)',
+              border: '1px solid #BFDBFE',
               textAlign: 'center',
             }}>
               <div style={{ fontSize: '12.5px', color: 'var(--text-primary, #121217)', fontWeight: 800 }}>
@@ -876,12 +909,12 @@ export default function AuthPage() {
                   display: 'inline-block',
                   padding: '7px 16px',
                   borderRadius: '999px',
-                  background: '#34A853',
+                  background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                   color: '#FFFFFF',
                   fontSize: '11.5px',
                   fontWeight: 800,
                   textDecoration: 'none',
-                  boxShadow: '0 4px 12px rgba(52, 168, 83, 0.25)',
+                  boxShadow: '0 4px 12px rgba(0, 136, 255, 0.25)',
                 }}
               >
                 Apply as a Reseller Agent →
@@ -898,7 +931,7 @@ export default function AuthPage() {
               {isLogin ? "Don't have an account yet? " : 'Already registered? '}
               <span
                 style={{
-                  color: '#34A853',
+                  color: '#035EC8',
                   fontWeight: 800,
                   cursor: 'pointer',
                   textDecoration: 'underline',
@@ -911,28 +944,6 @@ export default function AuthPage() {
               >
                 {isLogin ? 'Sign Up' : 'Sign In'}
               </span>
-            </div>
-
-            {/* Frictionless Continue as Guest */}
-            <div style={{ textAlign: 'center', marginTop: '14px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  localStorage.setItem('asuk_guest_session', 'true');
-                  router.push('/');
-                }}
-                style={{
-                  fontSize: '13px',
-                  color: 'var(--text-muted, #8E8E93)',
-                  fontWeight: 600,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '6px 12px',
-                }}
-              >
-                ← Continue as Guest
-              </button>
             </div>
           </>
         )}

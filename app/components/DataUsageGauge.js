@@ -54,8 +54,8 @@ export default function DataUsageGauge({
               fontWeight: 700,
               padding: '3px 8px',
               borderRadius: '999px',
-              background: 'rgba(114, 87, 255, 0.1)',
-              color: '#34A853',
+              background: '#EFF6FF',
+              color: '#035EC8',
             }}
           >
             {percentDataUsed}% used
@@ -67,8 +67,8 @@ export default function DataUsageGauge({
               fontWeight: 700,
               padding: '3px 8px',
               borderRadius: '999px',
-              background: 'rgba(16, 185, 129, 0.1)',
-              color: '#10B981',
+              background: '#EFF6FF',
+              color: '#035EC8',
             }}
           >
             ⚡ {t('unlimited')}
@@ -103,7 +103,7 @@ export default function DataUsageGauge({
               width: `${Math.min(100, Math.max(3, percentDataUsed))}%`,
               background: isDataLow
                 ? 'linear-gradient(90deg, #F59E0B 0%, #EF4444 100%)'
-                : 'linear-gradient(90deg, #34A853 0%, #10B981 100%)',
+                : 'linear-gradient(90deg, #062B66 0%, #0088FF 100%)',
               borderRadius: '999px',
               transition: 'width 0.6s ease',
             }}
@@ -123,13 +123,13 @@ export default function DataUsageGauge({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #6B7280)' }}>
-          <ArrowDownLeftIcon size={13} color="#10B981" />
+          <ArrowDownLeftIcon size={13} color="#0088FF" />
           <span>↓ Download:</span>
           <strong style={{ color: 'var(--text-primary, #121217)' }}>{downloadFormatted}</strong>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #6B7280)' }}>
-          <ArrowUpRightIcon size={13} color="#34A853" />
+          <ArrowUpRightIcon size={13} color="#035EC8" />
           <span>↑ Upload:</span>
           <strong style={{ color: 'var(--text-primary, #121217)' }}>{uploadFormatted}</strong>
         </div>

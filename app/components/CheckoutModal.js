@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../../lib/supabase';
 import { createPaymentHeaders } from '../../lib/payment-client.js';
+import { saveGuestVoucher } from '../../lib/guest-vouchers.js';
 import ReceiptModal from './ReceiptModal';
 import { ReceiptIcon } from './Icons';
 
@@ -67,10 +68,10 @@ function AutoConnectRedirect({ code, hotspotUrl, wifiSsid }) {
           onClick={handleRedirectToLogin}
           style={{
             width: '100%', padding: '13px', fontWeight: 700, fontSize: '14px',
-            background: 'linear-gradient(135deg, #10B981, #059669)',
+            background: 'linear-gradient(135deg, #062B66, #0088FF)',
             color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)',
+            boxShadow: '0 4px 14px rgba(0, 136, 255, 0.25)',
           }}
         >
           🚀 Go to Wi-Fi Login (Code Pre-Filled)
@@ -85,11 +86,10 @@ function AutoConnectRedirect({ code, hotspotUrl, wifiSsid }) {
         onClick={handleRedirectToLogin}
         style={{
           width: '100%', padding: '14px', fontWeight: 800, fontSize: '15px',
-          background: 'linear-gradient(135deg, #10B981, #059669)',
+          background: 'linear-gradient(135deg, #062B66, #0088FF)',
           color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
-          animation: 'pulse-green 2s ease-in-out infinite',
+          boxShadow: '0 4px 14px rgba(0, 136, 255, 0.35)',
         }}
       >
         🚀 Go to Wi-Fi Login in {countdown}s — Tap to Open Now
@@ -284,10 +284,14 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
         code: resData.voucher_code,
         plan: plan.name,
         duration: plan.duration,
+        price: plan.price,
         purchasedAt: Date.now(),
         isUsed: false,
+        isFallback: !!resData.is_fallback,
       };
-      if (typeof window !== 'undefined') {
+      if (typeof saveGuestVoucher === 'function') {
+        saveGuestVoucher(activeV);
+      } else if (typeof window !== 'undefined') {
         try {
           localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
           window.dispatchEvent(new Event('active_voucher_updated'));
@@ -330,8 +334,13 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       setVoucherData({ code: result.voucher_code, plan: result.plan, duration: plan.duration, isFallback: result.is_fallback });
       try {
         sessionStorage.removeItem(`monnify-order-${plan.id}`);
-        localStorage.setItem('asuk_active_voucher', JSON.stringify({ code: result.voucher_code, plan: result.plan, duration: plan.duration, purchasedAt: Date.now(), isUsed: false }));
-        window.dispatchEvent(new Event('active_voucher_updated'));
+        const activeV = { code: result.voucher_code, plan: result.plan, duration: plan.duration, price: plan.price, purchasedAt: Date.now(), isUsed: false, isFallback: !!result.is_fallback };
+        if (typeof saveGuestVoucher === 'function') {
+          saveGuestVoucher(activeV);
+        } else {
+          localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
+          window.dispatchEvent(new Event('active_voucher_updated'));
+        }
       } catch {}
       setPendingMonnifyOrder(null);
       setStep('success');
@@ -454,10 +463,14 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
                 code: verifyData.voucher_code,
                 plan: plan.name,
                 duration: plan.duration,
+                price: plan.price,
                 purchasedAt: Date.now(),
                 isUsed: false,
+                isFallback: !!verifyData.is_fallback,
               };
-              if (typeof window !== 'undefined') {
+              if (typeof saveGuestVoucher === 'function') {
+                saveGuestVoucher(activeV);
+              } else if (typeof window !== 'undefined') {
                 try {
                   localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
                   window.dispatchEvent(new Event('active_voucher_updated'));
@@ -598,10 +611,14 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
                 code: verifyData.voucher_code,
                 plan: plan.name,
                 duration: plan.duration,
+                price: plan.price,
                 purchasedAt: Date.now(),
                 isUsed: false,
+                isFallback: !!verifyData.is_fallback,
               };
-              if (typeof window !== 'undefined') {
+              if (typeof saveGuestVoucher === 'function') {
+                saveGuestVoucher(activeV);
+              } else if (typeof window !== 'undefined') {
                 try {
                   localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
                   window.dispatchEvent(new Event('active_voucher_updated'));
@@ -826,8 +843,8 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
                 style={{
                   margin: '14px 0',
                   padding: '12px 14px',
-                  background: autoRenew ? 'rgba(114, 87, 255, 0.08)' : 'var(--bg, #F9FAFB)',
-                  border: `1.5px solid ${autoRenew ? 'var(--primary, #34A853)' : 'var(--border-subtle, #F3F4F6)'}`,
+                  background: autoRenew ? 'rgba(0, 136, 255, 0.08)' : 'var(--bg, #F9FAFB)',
+                  border: `1.5px solid ${autoRenew ? 'var(--primary, #0088FF)' : 'var(--border-subtle, #F3F4F6)'}`,
                   borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
@@ -852,7 +869,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
                   type="checkbox"
                   checked={autoRenew}
                   onChange={(e) => setAutoRenew(e.target.checked)}
-                  style={{ width: '18px', height: '18px', accentColor: 'var(--primary, #34A853)', cursor: 'pointer' }}
+                  style={{ width: '18px', height: '18px', accentColor: 'var(--primary, #0088FF)', cursor: 'pointer' }}
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>

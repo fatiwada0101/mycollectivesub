@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
 import { supabase } from '../../../lib/supabase';
 import { createPaymentHeaders } from '../../../lib/payment-client.js';
+import { saveGuestVoucher, getGuestVouchers } from '../../../lib/guest-vouchers.js';
 import BottomNav from '../../components/BottomNav';
 import ReceiptModal from '../../components/ReceiptModal';
 import DataUsageGauge from '../../components/DataUsageGauge';
@@ -133,19 +134,15 @@ function VoucherStatusContent() {
           try { sessionStorage.removeItem(`flw-order-${redirectTxRef}`); } catch {}
         }
 
-        const activeV = {
+        saveGuestVoucher({
           code: result.voucher_code,
           plan: result.plan || savedOrder?.plan_name || 'Wi-Fi Pass',
           duration: savedOrder?.duration || '24h',
+          price: result.price || savedOrder?.price || 0,
           purchasedAt: Date.now(),
           isUsed: false,
-        };
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('asuk_active_voucher', JSON.stringify(activeV));
-            window.dispatchEvent(new Event('active_voucher_updated'));
-          } catch {}
-        }
+          isFallback: !!result.is_fallback,
+        });
 
         if (!cancelled) {
           setVoucherCode(result.voucher_code);
@@ -165,17 +162,14 @@ function VoucherStatusContent() {
     return () => { cancelled = true; };
   }, [initialCode, redirectTxId, redirectTxRef, redirectStatus, redirectPlanId, router]);
 
-  // If no code is in URL (and no redirect verification is pending), try reading from localStorage
+  // If no code is in URL (and no redirect verification is pending), try reading from saved local vouchers
   useEffect(() => {
     if (!voucherCode && !redirectTxId && !verifyingPayment && redirectStatus !== 'cancelled' && redirectStatus !== 'failed' && typeof window !== 'undefined') {
       try {
-        const stored = localStorage.getItem('asuk_active_voucher');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed?.code) {
-            setVoucherCode(parsed.code);
-            setInputCode(parsed.code);
-          }
+        const list = getGuestVouchers();
+        if (list[0]?.code) {
+          setVoucherCode(list[0].code);
+          setInputCode(list[0].code);
         }
       } catch (e) {}
     }
@@ -196,6 +190,12 @@ function VoucherStatusContent() {
         setData(json);
         setLocalSecondsRemaining(Math.max(0, Number(json.seconds_remaining) || 0));
         lastSyncTimeRef.current = Date.now();
+        saveGuestVoucher({
+          code: json.code || target,
+          plan: json.plan_name || json.profile || 'Wi-Fi Pass',
+          price: json.price || 0,
+          isUsed: !!json.is_used || (json.uptime_seconds || 0) > 0,
+        });
       } else {
         setError(json.error || 'Could not find voucher details');
       }
@@ -296,8 +296,8 @@ function VoucherStatusContent() {
   const isExpiringSoon = !isExpired && !isUnused && (currentRemaining < 1800 || percentLeft <= 25);
 
   // Status color badge
-  const statusColor = isExpired ? '#EF4444' : isExpiringSoon ? '#F59E0B' : '#10B981';
-  const statusBg = isExpired ? 'rgba(239, 68, 68, 0.12)' : isExpiringSoon ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)';
+  const statusColor = isExpired ? '#EF4444' : isExpiringSoon ? '#F59E0B' : '#0088FF';
+  const statusBg = isExpired ? 'rgba(239, 68, 68, 0.12)' : isExpiringSoon ? 'rgba(245, 158, 11, 0.12)' : '#EFF6FF';
   const statusLabel = isExpired ? 'Pass Expired' : isExpiringSoon ? 'Expiring Soon' : data?.is_connected ? 'Connected & Active' : (isUnused ? 'Ready to Connect' : 'Pass Ready');
 
   return (
@@ -337,7 +337,7 @@ function VoucherStatusContent() {
           border: '1.5px solid #F0F1F5',
           alignItems: 'center'
         }}>
-          <WifiIcon size={18} color="#34A853" />
+          <WifiIcon size={18} color="#0088FF" />
           <input
             type="text"
             placeholder="Enter or paste Voucher PIN (e.g. 38472)"
@@ -376,11 +376,11 @@ function VoucherStatusContent() {
 
       {verifyingPayment && (
         <div style={{
-          background: 'rgba(16, 185, 129, 0.1)',
-          border: '1px solid rgba(16, 185, 129, 0.3)',
+          background: '#EFF6FF',
+          border: '1px solid #BFDBFE',
           borderRadius: 16,
           padding: '14px 18px',
-          color: '#065F46',
+          color: '#062B66',
           fontSize: '13px',
           fontWeight: 600,
           marginBottom: 18,
@@ -513,7 +513,7 @@ function VoucherStatusContent() {
           <div style={{
             height: '100%',
             width: `${percentLeft}%`,
-            background: isExpired ? '#EF4444' : isExpiringSoon ? 'linear-gradient(90deg, #F59E0B, #EF4444)' : 'linear-gradient(90deg, #34A853, #10B981)',
+            background: isExpired ? '#EF4444' : isExpiringSoon ? 'linear-gradient(90deg, #F59E0B, #EF4444)' : 'linear-gradient(90deg, #062B66, #0088FF)',
             borderRadius: 999,
             transition: 'width 1s linear'
           }} />
@@ -548,7 +548,7 @@ function VoucherStatusContent() {
             style={{
               padding: '6px 14px',
               borderRadius: 999,
-              background: copied ? '#10B981' : '#FFFFFF',
+              background: copied ? '#0088FF' : '#FFFFFF',
               color: copied ? '#FFFFFF' : '#141417',
               border: 'none',
               fontSize: '12px',
@@ -590,7 +590,7 @@ function VoucherStatusContent() {
           <div style={{ fontSize: '19px', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
             {data?.download_formatted || '0.0 MB'}
           </div>
-          <div style={{ fontSize: '11px', color: '#10B981', marginTop: 2 }}>
+          <div style={{ fontSize: '11px', color: '#035EC8', marginTop: 2 }}>
             High-speed allocation
           </div>
         </div>
@@ -626,7 +626,7 @@ function VoucherStatusContent() {
           <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4, fontFamily: 'monospace' }}>
             {data?.ip_address || 'DHCP Active'}
           </div>
-          <div style={{ fontSize: '11px', color: data?.is_connected ? '#10B981' : 'var(--text-muted)', marginTop: 2 }}>
+          <div style={{ fontSize: '11px', color: data?.is_connected ? '#035EC8' : 'var(--text-muted)', marginTop: 2 }}>
             {data?.is_connected ? '● MikroTik Lease' : 'Offline / Standby'}
           </div>
         </div>
@@ -675,7 +675,7 @@ function VoucherStatusContent() {
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
               Hotspot Portal
             </div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: '#34A853', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#035EC8', fontFamily: 'monospace' }}>
               {networkInfo.hotspot_url}
             </div>
           </div>
@@ -690,7 +690,7 @@ function VoucherStatusContent() {
               width: '100%',
               padding: '13px',
               borderRadius: 999,
-              background: '#10B981',
+              background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
               color: '#FFFFFF',
               fontSize: '13.5px',
               fontWeight: 800,
@@ -699,7 +699,7 @@ function VoucherStatusContent() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
-              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
+              boxShadow: '0 4px 14px rgba(0, 136, 255, 0.3)',
               transition: 'all 0.15s ease'
             }}
           >
@@ -717,13 +717,13 @@ function VoucherStatusContent() {
             width: '100%',
             padding: '15px',
             borderRadius: 999,
-            background: isExpiringSoon || isExpired ? '#34A853' : '#141417',
+            background: isExpiringSoon || isExpired ? 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)' : '#062B66',
             color: '#FFFFFF',
             fontSize: '14px',
             fontWeight: 800,
             border: 'none',
             cursor: 'pointer',
-            boxShadow: '0 4px 18px rgba(114, 87, 255, 0.25)',
+            boxShadow: '0 4px 18px rgba(0, 136, 255, 0.25)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

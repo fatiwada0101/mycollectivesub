@@ -101,7 +101,7 @@ export default function VoucherGiftModal({ isOpen, onClose, voucherCode, planNam
                     width: '100%',
                     padding: '12px',
                     borderRadius: '12px',
-                    background: 'var(--primary, #34A853)',
+                    background: 'var(--primary, #0088FF)',
                     color: '#FFFFFF',
                     fontWeight: 700,
                     fontSize: '13px',
@@ -158,7 +158,7 @@ export default function VoucherGiftModal({ isOpen, onClose, voucherCode, planNam
                   {planName || 'Wi-Fi Pass'}
                 </span>
               </div>
-              <code style={{ fontSize: '13px', color: '#34A853', fontWeight: 700 }}>{voucherCode}</code>
+              <code style={{ fontSize: '13px', color: '#035EC8', fontWeight: 700 }}>{voucherCode}</code>
             </div>
 
             <div className="sa-form-group">

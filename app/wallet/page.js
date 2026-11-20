@@ -557,13 +557,13 @@ function WalletContent() {
               padding: '6px 12px',
               fontSize: '11px',
               fontWeight: 700,
-              color: '#A1A1AA',
+              color: '#E0F2FE',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
             }}
           >
-            <ShieldIcon size={14} color="#10B981" />
+            <ShieldIcon size={14} color="#60A5FA" />
             Active Wallet
           </div>
         </div>
@@ -773,7 +773,7 @@ function WalletContent() {
             <span>Current Balance:</span>
             <span>{formatPrice(walletBalance)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#16A34A', fontWeight: 700 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#035EC8', fontWeight: 700 }}>
             <span>+ Deposit Amount:</span>
             <span>{formatPrice(depositNum)}</span>
           </div>
@@ -794,7 +794,7 @@ function WalletContent() {
             color: '#71717A',
           }}
         >
-          <ShieldIcon size={16} color="#10B981" />
+          <ShieldIcon size={16} color="#0088FF" />
           <span>Secured by Flutterwave • Supports Cards, Bank Transfer &amp; USSD</span>
         </div>
 
@@ -977,13 +977,13 @@ function WalletContent() {
                         width: '38px',
                         height: '38px',
                         borderRadius: '12px',
-                        background: 'rgba(16, 185, 129, 0.12)',
+                        background: '#EFF6FF',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <ArrowDownLeftIcon size={20} color="#10B981" />
+                      <ArrowDownLeftIcon size={20} color="#0088FF" />
                     </div>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '14px', color: '#18181B' }}>
@@ -1002,15 +1002,15 @@ function WalletContent() {
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, fontSize: '14px', color: '#16A34A' }}>
+                      <div style={{ fontWeight: 800, fontSize: '14px', color: '#035EC8' }}>
                         +{formatPrice(tx.amount)}
                       </div>
                       <span
                         style={{
                           fontSize: '10px',
                           fontWeight: 700,
-                          background: '#DCFCE7',
-                          color: '#15803D',
+                          background: '#E6F2FF',
+                          color: '#035EC8',
                           padding: '2px 8px',
                           borderRadius: '8px',
                           display: 'inline-block',

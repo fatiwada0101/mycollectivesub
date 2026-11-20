@@ -2,15 +2,29 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useBranding } from '../context/BrandingContext';
 import { useAuth } from '../context/AuthContext';
+import { enableGuestSession, getGuestVouchers } from '../../lib/guest-vouchers.js';
 import BrandMark from '../components/BrandMark';
 
 export default function LandingPage() {
+  const router = useRouter();
   const { appName } = useBranding();
   const { user } = useAuth();
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
+  const [savedVoucher, setSavedVoucher] = useState(null);
+
+  useEffect(() => {
+    const list = getGuestVouchers();
+    if (list.length > 0) setSavedVoucher(list[0]);
+  }, []);
+
+  const enterGuestDashboard = () => {
+    enableGuestSession();
+    router.push('/');
+  };
 
   useEffect(() => {
     fetch('/api/super-admin/plans')
@@ -94,11 +108,27 @@ export default function LandingPage() {
             justifyContent: 'space-between',
           }}
         >
-          <Link href="/" style={{ textDecoration: 'none' }}>
+          <Link href="/" onClick={() => enableGuestSession()} style={{ textDecoration: 'none' }}>
             <BrandMark size={34} appName={appName} showSubtext />
           </Link>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={enterGuestDashboard}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '999px',
+                background: '#FFFFFF',
+                border: '1.5px solid #0088FF',
+                color: '#062B66',
+                fontSize: '13px',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              {user ? 'Dashboard' : 'Guest Dashboard'}
+            </button>
             <Link
               href="/packages"
               style={{
@@ -215,7 +245,7 @@ export default function LandingPage() {
           Connect instantly from <strong>{formatPrice(lowestPrice)}</strong>. Fast, reliable wireless hotspot access for streaming, work, and study.
         </p>
 
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '26px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: savedVoucher ? '16px' : '26px' }}>
           <Link
             href="/packages"
             style={{
@@ -232,24 +262,67 @@ export default function LandingPage() {
           >
             Buy Data Plan →
           </Link>
+          <button
+            type="button"
+            onClick={enterGuestDashboard}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '13px 26px',
+              borderRadius: '999px',
+              background: '#FFFFFF',
+              border: '2px solid #0088FF',
+              color: '#062B66',
+              fontSize: '15px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              boxShadow: '0 6px 18px rgba(0, 136, 255, 0.14)',
+            }}
+          >
+            🚀 Continue as Guest (Dashboard)
+          </button>
           <a
             href="#plans"
             style={{
               display: 'inline-block',
               padding: '13px 24px',
               borderRadius: '999px',
-              background: '#FFFFFF',
+              background: '#EFF6FF',
               border: '1.5px solid #BFDBFE',
-              color: '#062B66',
+              color: '#035EC8',
               fontSize: '15px',
               fontWeight: 800,
               textDecoration: 'none',
-              boxShadow: '0 4px 12px rgba(6, 43, 102, 0.06)',
             }}
           >
             View Plans
           </a>
         </div>
+
+        {savedVoucher && (
+          <div style={{ marginBottom: '22px' }}>
+            <button
+              type="button"
+              onClick={enterGuestDashboard}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 18px',
+                borderRadius: '999px',
+                background: '#EFF6FF',
+                border: '1.5px solid #0088FF',
+                color: '#062B66',
+                fontSize: '13px',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              🎟️ Saved Voucher Ready ({savedVoucher.code}) — Open Dashboard →
+            </button>
+          </div>
+        )}
 
         <div
           style={{

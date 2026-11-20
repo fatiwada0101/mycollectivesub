@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
+import { getGuestVouchers, enableGuestSession } from '../../lib/guest-vouchers.js';
 import BottomNav from '../components/BottomNav';
 import CheckoutModal from '../components/CheckoutModal';
 import RoamingBanner from '../components/RoamingBanner';
@@ -32,6 +33,22 @@ export default function PackagesPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   const [toast, setToast] = useState('');
+  const [savedVoucher, setSavedVoucher] = useState(null);
+  const [copiedSaved, setCopiedSaved] = useState(false);
+
+  useEffect(() => {
+    const refreshLocal = () => {
+      const list = getGuestVouchers();
+      setSavedVoucher(list[0] || null);
+    };
+    refreshLocal();
+    window.addEventListener('active_voucher_updated', refreshLocal);
+    window.addEventListener('storage', refreshLocal);
+    return () => {
+      window.removeEventListener('active_voucher_updated', refreshLocal);
+      window.removeEventListener('storage', refreshLocal);
+    };
+  }, []);
 
   const formatPrice = (amount) =>
     '₦' +
@@ -164,7 +181,10 @@ export default function PackagesPage() {
       <div className="screen-topbar">
         <button
           className="circle-icon-btn"
-          onClick={() => router.push('/')}
+          onClick={() => {
+            enableGuestSession();
+            router.push('/');
+          }}
           aria-label="Back to home"
         >
           <ChevronLeftIcon size={20} color="#121217" />
@@ -174,6 +194,69 @@ export default function PackagesPage() {
 
         <div style={{ width: '40px' }} />
       </div>
+
+      {savedVoucher && (
+        <div style={{
+          background: '#EFF6FF',
+          border: '1.5px solid #BFDBFE',
+          borderRadius: '18px',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '10px',
+          flexWrap: 'wrap',
+        }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: '#035EC8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Saved Pass Ready ({savedVoucher.plan})
+            </div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '17px', fontWeight: 900, color: '#062B66', letterSpacing: '1.5px' }}>
+              {savedVoucher.code}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard?.writeText(savedVoucher.code);
+                setCopiedSaved(true);
+                showToast(`PIN ${savedVoucher.code} copied!`);
+                setTimeout(() => setCopiedSaved(false), 2000);
+              }}
+              style={{
+                padding: '7px 12px',
+                borderRadius: '999px',
+                background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                fontSize: '11.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              {copiedSaved ? '✓ Copied' : 'Copy PIN'}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/vouchers')}
+              style={{
+                padding: '7px 12px',
+                borderRadius: '999px',
+                background: '#FFFFFF',
+                color: '#035EC8',
+                border: '1px solid #BFDBFE',
+                fontSize: '11.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              My Passes →
+            </button>
+          </div>
+        </div>
+      )}
 
       <RoamingBanner onVoucherResumed={() => router.push('/status')} />
 
@@ -250,7 +333,7 @@ export default function PackagesPage() {
                       {plan.duration}
                     </span>
                     {pricing.badge && (
-                      <span className="pass-tag-pill" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                      <span className="pass-tag-pill" style={{ background: '#E6F2FF', color: '#035EC8', border: '1px solid #BFDBFE' }}>
                         {pricing.badge}
                       </span>
                     )}
@@ -261,7 +344,7 @@ export default function PackagesPage() {
                       <span style={{ fontSize: '11px', textDecoration: 'line-through', color: 'var(--text-muted)' }}>
                         {formatPrice(pricing.originalPrice)}
                       </span>
-                      <div className="pass-price-large" style={{ color: '#10B981' }}>
+                      <div className="pass-price-large" style={{ color: '#035EC8' }}>
                         {formatPrice(pricing.price)}
                       </div>
                     </div>
@@ -279,7 +362,7 @@ export default function PackagesPage() {
 
                 <div className="pass-card-bottom">
                   <div className="pass-instant-tag">
-                    <CheckIcon size={14} color="#10B981" />
+                    <CheckIcon size={14} color="#0088FF" />
                     <span>Instant MikroTik Pin</span>
                   </div>
 

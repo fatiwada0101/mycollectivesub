@@ -104,7 +104,7 @@ export default function WalletTransferModal({ isOpen, onClose, walletBalance, on
               Transfer Complete!
             </h4>
 
-            <div style={{ fontSize: '24px', fontWeight: 900, color: '#10B981', margin: '8px 0' }}>
+            <div style={{ fontSize: '24px', fontWeight: 900, color: '#035EC8', margin: '8px 0' }}>
               ₦{Number(successData.transferred_amount).toLocaleString()}
             </div>
 
@@ -119,7 +119,7 @@ export default function WalletTransferModal({ isOpen, onClose, walletBalance, on
                 width: '100%',
                 padding: '12px',
                 borderRadius: '12px',
-                background: 'var(--primary, #34A853)',
+                background: 'var(--primary, #0088FF)',
                 color: '#FFFFFF',
                 fontWeight: 700,
                 fontSize: '13px',
@@ -134,7 +134,7 @@ export default function WalletTransferModal({ isOpen, onClose, walletBalance, on
           <form onSubmit={handleSubmit}>
             <div
               style={{
-                background: 'rgba(114, 87, 255, 0.06)',
+                background: 'rgba(0, 136, 255, 0.06)',
                 padding: '12px 14px',
                 borderRadius: '12px',
                 marginBottom: '16px',
@@ -146,7 +146,7 @@ export default function WalletTransferModal({ isOpen, onClose, walletBalance, on
               <span style={{ fontSize: '12px', color: 'var(--text-secondary, #71717a)', fontWeight: 600 }}>
                 Available Balance
               </span>
-              <strong style={{ fontSize: '14px', color: 'var(--primary, #34A853)' }}>
+              <strong style={{ fontSize: '14px', color: 'var(--primary, #0088FF)' }}>
                 ₦{Number(walletBalance || 0).toLocaleString()}
               </strong>
             </div>

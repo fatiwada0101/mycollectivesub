@@ -276,10 +276,10 @@ function CaptiveLoginPage() {
           ) : (
             <div style={{
               width: 64, height: 64, borderRadius: '22px',
-              background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+              background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               margin: '0 auto 16px', fontSize: 28,
-              boxShadow: '0 10px 28px rgba(52, 168, 83, 0.42)',
+              boxShadow: '0 10px 28px rgba(0, 136, 255, 0.42)',
               border: '1px solid rgba(255, 255, 255, 0.25)',
             }}>
               📶
@@ -301,28 +301,29 @@ function CaptiveLoginPage() {
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{
               width: 68, height: 68, borderRadius: '50%',
-              background: 'rgba(52, 168, 83, 0.16)',
-              border: '2px solid rgba(52, 168, 83, 0.45)',
+              background: '#EFF6FF',
+              border: '2px solid #0088FF',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               margin: '0 auto 16px', fontSize: 30,
-              boxShadow: '0 0 24px rgba(52, 168, 83, 0.3)',
+              color: '#035EC8',
+              boxShadow: '0 0 24px rgba(0, 136, 255, 0.28)',
             }}>
               ✓
             </div>
-            <h2 style={{ color: '#34A853', fontSize: '20px', fontWeight: 800, margin: '0 0 6px' }}>
+            <h2 style={{ color: '#035EC8', fontSize: '20px', fontWeight: 800, margin: '0 0 6px' }}>
               Connected & Authenticated!
             </h2>
-            <p style={{ color: 'rgba(255, 255, 255, 0.65)', fontSize: '13px', margin: '0 0 16px' }}>
+            <p style={{ color: '#64748B', fontSize: '13px', margin: '0 0 16px' }}>
               Submitting session to router... Granting internet access.
             </p>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '6px 16px', borderRadius: 999,
-              background: 'rgba(52, 168, 83, 0.15)', color: '#34A853',
+              background: '#EFF6FF', color: '#035EC8',
               fontSize: '12px', fontWeight: 700,
-              border: '1px solid rgba(52, 168, 83, 0.3)',
+              border: '1px solid #BFDBFE',
             }}>
-              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#34A853' }} />
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#0088FF' }} />
               Active Hotspot Session
             </div>
           </div>
@@ -330,16 +331,16 @@ function CaptiveLoginPage() {
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{
               width: 56, height: 56, borderRadius: '50%',
-              border: '3px solid rgba(255, 255, 255, 0.1)',
-              borderTop: '3px solid #34A853',
+              border: '3px solid #E2E8F0',
+              borderTop: '3px solid #0088FF',
               margin: '0 auto 16px',
               animation: 'spin 1s linear infinite',
             }} />
-            <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, margin: '0 0 6px' }}>
+            <h2 style={{ color: '#062B66', fontSize: '18px', fontWeight: 700, margin: '0 0 6px' }}>
               Auto-Authenticating...
             </h2>
-            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '13px', margin: '0 0 12px' }}>
-              Logging in with voucher code <strong style={{ color: '#34A853', fontFamily: 'monospace' }}>{code}</strong>
+            <p style={{ color: '#64748B', fontSize: '13px', margin: '0 0 12px' }}>
+              Logging in with voucher code <strong style={{ color: '#035EC8', fontFamily: 'monospace' }}>{code}</strong>
             </p>
             <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
           </div>
@@ -368,8 +369,8 @@ function CaptiveLoginPage() {
                   boxSizing: 'border-box',
                 }}
                 onFocus={e => {
-                  e.target.style.borderColor = '#16A34A';
-                  e.target.style.boxShadow = '0 0 0 4px rgba(22, 163, 74, 0.15)';
+                  e.target.style.borderColor = '#0088FF';
+                  e.target.style.boxShadow = '0 0 0 4px rgba(0, 136, 255, 0.15)';
                 }}
                 onBlur={e => {
                   e.target.style.borderColor = '#CBD5E1';
@@ -394,10 +395,10 @@ function CaptiveLoginPage() {
               disabled={loading || !code.trim()}
               style={{
                 width: '100%', padding: '16px', fontSize: '15px', fontWeight: 800,
-                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)',
+                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                 color: '#FFFFFF', border: 'none', borderRadius: 14, cursor: loading ? 'wait' : 'pointer',
                 letterSpacing: '0.3px',
-                boxShadow: loading ? 'none' : '0 4px 14px rgba(22, 163, 74, 0.35)',
+                boxShadow: loading ? 'none' : '0 4px 14px rgba(0, 136, 255, 0.35)',
                 transition: 'all 0.2s ease',
               }}
             >
@@ -418,10 +419,10 @@ function CaptiveLoginPage() {
             href={buyPackageUrl}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              color: '#15803D', fontSize: '13.5px', fontWeight: 800,
+              color: '#035EC8', fontSize: '13.5px', fontWeight: 800,
               textDecoration: 'none', padding: '10px 18px',
-              background: '#DCFCE7', borderRadius: 12,
-              border: '1px solid #BBF7D0',
+              background: '#EFF6FF', borderRadius: 12,
+              border: '1px solid #BFDBFE',
               transition: 'all 0.2s ease',
             }}
           >

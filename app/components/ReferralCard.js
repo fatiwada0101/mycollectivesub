@@ -34,8 +34,8 @@ export default function ReferralCard() {
   return (
     <div
       style={{
-        background: 'linear-gradient(135deg, rgba(114, 87, 255, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%)',
-        border: '1.5px solid rgba(114, 87, 255, 0.2)',
+        background: 'linear-gradient(135deg, rgba(6, 43, 102, 0.06) 0%, rgba(0, 136, 255, 0.08) 100%)',
+        border: '1.5px solid #BFDBFE',
         borderRadius: '20px',
         padding: '18px 20px',
         margin: '18px 0',
@@ -48,7 +48,7 @@ export default function ReferralCard() {
             Refer Friends, Earn ₦50
           </strong>
         </div>
-        <span style={{ fontSize: '11px', fontWeight: 800, color: '#10B981', background: '#DCFCE7', padding: '2px 8px', borderRadius: '999px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 800, color: '#035EC8', background: '#EFF6FF', padding: '2px 8px', borderRadius: '999px' }}>
           Earn Wallet Bonus
         </span>
       </div>
@@ -70,7 +70,7 @@ export default function ReferralCard() {
           marginBottom: '12px',
         }}
       >
-        <div style={{ fontFamily: 'monospace', fontSize: '15px', fontWeight: 800, color: 'var(--primary, #34A853)', letterSpacing: '1px' }}>
+        <div style={{ fontFamily: 'monospace', fontSize: '15px', fontWeight: 800, color: 'var(--primary, #0088FF)', letterSpacing: '1px' }}>
           {data.referral_code}
         </div>
 
@@ -79,7 +79,7 @@ export default function ReferralCard() {
           style={{
             padding: '8px 14px',
             borderRadius: '8px',
-            background: copied ? '#10B981' : 'var(--primary, #34A853)',
+            background: copied ? '#062B66' : 'var(--primary, #0088FF)',
             color: '#FFFFFF',
             fontSize: '12px',
             fontWeight: 700,

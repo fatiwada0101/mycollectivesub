@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../../lib/supabase';
+import { getGuestVouchers, enableGuestSession } from '../../lib/guest-vouchers.js';
 import BottomNav from '../components/BottomNav';
 import ReceiptModal from '../components/ReceiptModal';
 import {
@@ -28,10 +29,9 @@ export default function VouchersPage() {
   const [selectedReceiptVoucher, setSelectedReceiptVoucher] = useState(null);
   const [toast, setToast] = useState('');
   const [networkInfo, setNetworkInfo] = useState({
-    hotspot_url: 'asuktech.net',
+    hotspot_url: 'hotspot.mycollectivesub.net',
     wifi_ssid: 'My Collective Sub Wi-Fi',
   });
-
 
   useEffect(() => {
     fetch('/api/settings/public')
@@ -39,7 +39,7 @@ export default function VouchersPage() {
       .then(d => {
         if (d?.mikrotik) {
           setNetworkInfo({
-            hotspot_url: d.mikrotik.hotspot_url || 'asuktech.net',
+            hotspot_url: d.mikrotik.hotspot_url || 'hotspot.mycollectivesub.net',
             wifi_ssid: d.mikrotik.wifi_ssid || 'My Collective Sub Wi-Fi',
           });
         }
@@ -59,16 +59,24 @@ export default function VouchersPage() {
     setTimeout(() => setToast(''), 3000);
   };
 
-  // Auth guard
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace('/auth');
-    }
-  }, [authLoading, user, router]);
+    if (authLoading) return;
+    enableGuestSession();
 
-  useEffect(() => {
-    const fetchVouchers = async () => {
+    const loadVouchers = async () => {
+      const localList = getGuestVouchers().map((item, idx) => ({
+        id: `local-${item.code}-${idx}`,
+        voucher_code: item.code,
+        profile_name: item.plan || 'Wi-Fi Pass',
+        price: item.price || 0,
+        created_at: item.purchasedAt ? new Date(item.purchasedAt).toISOString() : new Date().toISOString(),
+        is_used: !!item.isUsed,
+        payment_method: item.isFallback ? 'Backup Pool' : 'Saved on Device',
+        is_local: true,
+      }));
+
       if (!user) {
+        setVouchers(localList);
         setLoading(false);
         return;
       }
@@ -81,16 +89,26 @@ export default function VouchersPage() {
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        setVouchers(data || []);
+        const dbList = data || [];
+        const dbCodes = new Set(dbList.map(v => String(v.voucher_code || '').trim().toUpperCase()));
+        const extraLocal = localList.filter(v => !dbCodes.has(String(v.voucher_code || '').trim().toUpperCase()));
+        setVouchers([...dbList, ...extraLocal]);
       } catch (err) {
         console.error('Error fetching vouchers:', err);
+        setVouchers(localList);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchVouchers();
-  }, [user]);
+    loadVouchers();
+    window.addEventListener('active_voucher_updated', loadVouchers);
+    window.addEventListener('storage', loadVouchers);
+    return () => {
+      window.removeEventListener('active_voucher_updated', loadVouchers);
+      window.removeEventListener('storage', loadVouchers);
+    };
+  }, [authLoading, user]);
 
   const copyCode = (code) => {
     navigator.clipboard.writeText(code);
@@ -99,11 +117,11 @@ export default function VouchersPage() {
     setTimeout(() => setCopiedCode(''), 2000);
   };
 
-  if (authLoading || !user) {
+  if (authLoading) {
     return (
       <div className="app-shell">
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
-          Checking authentication...
+          Loading saved passes...
         </div>
       </div>
     );
@@ -115,8 +133,8 @@ export default function VouchersPage() {
       <div className="screen-topbar">
         <button
           className="circle-icon-btn"
-          onClick={() => router.back()}
-          aria-label="Back"
+          onClick={() => router.push('/')}
+          aria-label="Back to dashboard"
         >
           <ChevronLeftIcon size={20} color="#121217" />
         </button>
@@ -129,12 +147,48 @@ export default function VouchersPage() {
       {/* Sub-header info */}
       <div style={{ marginBottom: '18px' }}>
         <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
-          Your active hotspot passes for <strong>{networkInfo.wifi_ssid}</strong>.
+          {user
+            ? <>Your active hotspot passes for <strong>{networkInfo.wifi_ssid}</strong>.</>
+            : <>Your hotspot passes saved on this device for <strong>{networkInfo.wifi_ssid}</strong> (persists across refresh).</>}
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '11.5px', color: '#34A853', fontWeight: 700 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '11.5px', color: '#035EC8', fontWeight: 700 }}>
           <span>🌐 Hotspot Portal:</span>
           <span style={{ fontFamily: 'monospace' }}>http://{networkInfo.hotspot_url}</span>
         </div>
+        {!user && (
+          <div style={{
+            marginTop: '10px',
+            padding: '10px 14px',
+            borderRadius: '14px',
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            flexWrap: 'wrap',
+            fontSize: '12px',
+            color: '#062B66',
+          }}>
+            <span style={{ fontWeight: 700 }}>Guest passes stay saved in this browser even after refresh.</span>
+            <button
+              type="button"
+              onClick={() => router.push('/auth')}
+              style={{
+                background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '999px',
+                padding: '6px 12px',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              Sign In to Sync →
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Vouchers List */}
@@ -152,14 +206,14 @@ export default function VouchersPage() {
               width: '60px',
               height: '60px',
               borderRadius: '20px',
-              background: 'rgba(114, 87, 255, 0.1)',
+              background: '#EFF6FF',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 16px',
             }}
           >
-            <WifiIcon size={28} color="#34A853" />
+            <WifiIcon size={28} color="#0088FF" />
           </div>
           <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>
             No Vouchers Found
@@ -207,8 +261,8 @@ export default function VouchersPage() {
                     fontWeight: 700,
                     padding: '4px 10px',
                     borderRadius: '999px',
-                    background: v.is_used ? '#F4F5F8' : 'rgba(16, 185, 129, 0.12)',
-                    color: v.is_used ? '#8E8E93' : '#10B981',
+                    background: v.is_used ? '#F4F5F8' : '#E6F2FF',
+                    color: v.is_used ? '#8E8E93' : '#035EC8',
                   }}
                 >
                   {v.is_used ? '● Used' : '● Ready to Connect'}
@@ -235,7 +289,7 @@ export default function VouchersPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {!v.is_used && (
                     <a
                       href={`http://${networkInfo.hotspot_url}/login?username=${encodeURIComponent(v.voucher_code)}&password=${encodeURIComponent(v.voucher_code)}`}
@@ -243,7 +297,7 @@ export default function VouchersPage() {
                       rel="noopener noreferrer"
                       style={{
                         padding: '8px 12px',
-                        background: '#10B981',
+                        background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                         color: '#FFFFFF',
                         borderRadius: '999px',
                         fontSize: '12px',
@@ -253,7 +307,7 @@ export default function VouchersPage() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4,
-                        boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                        boxShadow: '0 2px 8px rgba(0, 136, 255, 0.3)'
                       }}
                       title={`Connect to ${networkInfo.wifi_ssid} and auto-login`}
                     >
@@ -267,11 +321,11 @@ export default function VouchersPage() {
                     style={{
                       padding: '8px 12px',
                       background: '#FFFFFF',
-                      color: '#34A853',
+                      color: '#035EC8',
                       borderRadius: '999px',
                       fontSize: '12px',
                       fontWeight: 700,
-                      border: '1.5px solid rgba(114, 87, 255, 0.25)',
+                      border: '1.5px solid #BFDBFE',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -310,7 +364,7 @@ export default function VouchersPage() {
                     onClick={() => copyCode(v.voucher_code)}
                     style={{
                       padding: '8px 14px',
-                      background: copiedCode === v.voucher_code ? '#10B981' : '#141417',
+                      background: copiedCode === v.voucher_code ? '#0088FF' : '#062B66',
                       color: '#FFFFFF',
                       borderRadius: '999px',
                       fontSize: '12px',

@@ -98,11 +98,11 @@ function ResetPasswordForm() {
         }}>
           <div style={{
             width: 64, height: 64, borderRadius: '50%',
-            background: 'rgba(16, 185, 129, 0.12)',
+            background: '#EFF6FF',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 16px',
           }}>
-            <CheckIcon size={28} color="#10B981" />
+            <CheckIcon size={28} color="#0088FF" />
           </div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#121217', margin: '0 0 8px' }}>
             Password Updated!
@@ -136,11 +136,11 @@ function ResetPasswordForm() {
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{
             width: 56, height: 56, borderRadius: '50%',
-            background: 'rgba(114, 87, 255, 0.1)',
+            background: '#EFF6FF',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 14px',
           }}>
-            <WifiIcon size={24} color="#34A853" />
+            <WifiIcon size={24} color="#0088FF" />
           </div>
           <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#121217', margin: '0 0 6px' }}>
             Set New Password
@@ -157,7 +157,7 @@ function ResetPasswordForm() {
             color: '#92400E', fontSize: '12.5px', marginBottom: 18, textAlign: 'center',
             lineHeight: 1.4,
           }}>
-            ⏳ Verifying your reset token... If this persists, the link may have expired. Go back to <a href="/auth" style={{ color: '#34A853', fontWeight: 700 }}>Sign In</a> and request a new reset.
+            ⏳ Verifying your reset token... If this persists, the link may have expired. Go back to <a href="/auth" style={{ color: '#035EC8', fontWeight: 700 }}>Sign In</a> and request a new reset.
           </div>
         )}
 
@@ -230,7 +230,7 @@ function ResetPasswordForm() {
           <a
             href="/auth"
             style={{
-              color: '#34A853',
+              color: '#035EC8',
               fontSize: '13px',
               fontWeight: 700,
               textDecoration: 'none',

@@ -74,19 +74,19 @@ export default function RoamingBanner({ onVoucherResumed, searchParams }) {
   return (
     <div
       style={{
-        background: 'linear-gradient(135deg, rgba(114, 87, 255, 0.12) 0%, rgba(16, 185, 129, 0.12) 100%)',
-        border: '1px solid rgba(114, 87, 255, 0.25)',
+        background: 'linear-gradient(135deg, rgba(0, 136, 255, 0.1) 0%, rgba(6, 43, 102, 0.06) 100%)',
+        border: '1px solid #BFDBFE',
         borderRadius: '16px',
         padding: '16px 20px',
         margin: '16px 0 24px',
-        boxShadow: '0 4px 20px rgba(114, 87, 255, 0.08)',
+        boxShadow: '0 4px 20px rgba(0, 136, 255, 0.1)',
         position: 'relative',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
         <div
           style={{
-            background: '#34A853',
+            background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
             color: '#FFFFFF',
             borderRadius: '12px',
             width: '40px',
@@ -108,7 +108,7 @@ export default function RoamingBanner({ onVoucherResumed, searchParams }) {
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                color: '#34A853',
+                color: '#035EC8',
                 display: 'inline-block',
                 marginBottom: '4px',
               }}
@@ -136,7 +136,7 @@ export default function RoamingBanner({ onVoucherResumed, searchParams }) {
 
           <p style={{ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-secondary, #4B5563)', lineHeight: '1.4' }}>
             You have an active pass <strong>({voucher.profile_name})</strong> with{' '}
-            <strong style={{ color: '#10B981' }}>{voucher.remainingFormatted} remaining</strong>. Continue surfing without paying again.
+            <strong style={{ color: '#035EC8' }}>{voucher.remainingFormatted} remaining</strong>. Continue surfing without paying again.
           </p>
 
           {resumed ? (
@@ -146,8 +146,8 @@ export default function RoamingBanner({ onVoucherResumed, searchParams }) {
                 alignItems: 'center',
                 gap: '6px',
                 padding: '8px 16px',
-                background: '#DCFCE7',
-                color: '#166534',
+                background: '#EFF6FF',
+                color: '#035EC8',
                 borderRadius: '10px',
                 fontWeight: 700,
                 fontSize: '13px',
@@ -160,7 +160,7 @@ export default function RoamingBanner({ onVoucherResumed, searchParams }) {
               onClick={handleResume}
               disabled={resuming}
               style={{
-                background: 'linear-gradient(135deg, #34A853 0%, #2D9249 100%)',
+                background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                 color: '#FFFFFF',
                 border: 'none',
                 borderRadius: '10px',

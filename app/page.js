@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from './context/AuthContext';
 import { useBranding } from './context/BrandingContext';
 import { supabase } from '../lib/supabase';
+import { enableGuestSession, getGuestVouchers, hasGuestOrVoucherSession } from '../lib/guest-vouchers.js';
 import BottomNav from './components/BottomNav';
 import SideDrawer from './components/SideDrawer';
 import CheckoutModal from './components/CheckoutModal';
@@ -41,15 +42,25 @@ export default function HomePage() {
   const { user, profile, wallet, refreshWallet, loading: authLoading } = useAuth();
   const { appName } = useBranding();
 
-  // Gate: if not logged in and no guest session, redirect to landing
+  // Gate: keep dashboard persistent on refresh for signed-in users, returning guests, and in-app visitors
   useEffect(() => {
     if (authLoading) return; // wait for auth to resolve
-    if (!user) {
-      const isGuest = typeof window !== 'undefined' && localStorage.getItem('asuk_guest_session');
-      if (!isGuest) {
-        router.replace('/landing');
-      }
+    if (user) {
+      enableGuestSession();
+      return;
     }
+    const cameFromApp =
+      typeof document !== 'undefined' &&
+      document.referrer &&
+      typeof window !== 'undefined' &&
+      document.referrer.startsWith(window.location.origin);
+
+    if (!hasGuestOrVoucherSession() && !cameFromApp) {
+      router.replace('/landing');
+      return;
+    }
+
+    enableGuestSession();
   }, [user, authLoading, router]);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -61,6 +72,7 @@ export default function HomePage() {
 
   // Active Voucher & Live Expiry Tracking
   const [activeVoucher, setActiveVoucher] = useState(null);
+  const [savedVouchers, setSavedVouchers] = useState([]);
   const [countdownText, setCountdownText] = useState('Checking...');
   const [isPassActive, setIsPassActive] = useState(false);
   const [copiedPin, setCopiedPin] = useState(false);
@@ -146,9 +158,13 @@ export default function HomePage() {
   // Sync Active Voucher from local storage and Supabase
   const syncActiveVoucher = useCallback(async () => {
     let candidate = null;
+    const localList = getGuestVouchers();
+    setSavedVouchers(localList);
 
     // 1. Check localStorage first (instant for guests and immediate post-checkout)
-    if (typeof window !== 'undefined') {
+    if (localList.length > 0) {
+      candidate = { ...localList[0] };
+    } else if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('asuk_active_voucher');
         if (stored) {
@@ -501,7 +517,7 @@ export default function HomePage() {
                 width: '10px',
                 height: '10px',
                 borderRadius: '50%',
-                background: '#10B981',
+                background: '#0088FF',
                 border: '2px solid #FFFFFF',
               }} />
             )}
@@ -554,8 +570,8 @@ export default function HomePage() {
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: '#16A34A',
-            boxShadow: '0 0 8px #16A34A',
+            background: '#0088FF',
+            boxShadow: '0 0 8px #0088FF',
           }} />
           Hotspot Ready
         </div>
@@ -672,7 +688,7 @@ export default function HomePage() {
               <span style={{
                 fontSize: '11px',
                 fontWeight: 800,
-                color: isPassActive ? '#4ADE80' : 'rgba(255,255,255,0.7)',
+                color: isPassActive ? '#BAE6FD' : 'rgba(255,255,255,0.7)',
                 display: 'block',
               }}>
                 {activeVoucher?.isUnused ? '● Pass Ready' : (isPassActive ? '● Pass Active' : '● No Active Pass')}
@@ -680,7 +696,7 @@ export default function HomePage() {
               <div style={{
                 fontSize: '14px',
                 fontWeight: 800,
-                color: isPassActive ? '#4ADE80' : 'rgba(255,255,255,0.9)',
+                color: isPassActive ? '#E0F2FE' : 'rgba(255,255,255,0.9)',
                 fontFamily: "'JetBrains Mono', monospace",
                 marginTop: '2px',
               }}>
@@ -731,67 +747,103 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ── Active Session Live Widget ── */}
-      {isPassActive && activeVoucher && (
+      {/* ── Active / Saved Voucher Persistence Widget ── */}
+      {(isPassActive || savedVouchers.length > 0) && activeVoucher && (
         <div style={{
           background: 'var(--surface, #FFFFFF)',
           borderRadius: '20px',
           padding: '16px 18px',
           border: '1.5px solid #BFDBFE',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          flexDirection: 'column',
+          gap: '12px',
           marginBottom: '22px',
           boxShadow: '0 6px 20px rgba(0, 136, 255, 0.1)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '14px',
-              background: '#EFF6FF',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative',
-            }}>
-              <WifiIcon size={20} color="#0088FF" />
-              <span style={{
-                position: 'absolute',
-                top: '6px',
-                right: '6px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: '#16A34A',
-                boxShadow: '0 0 8px #16A34A',
-              }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '14px',
+                background: '#EFF6FF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+              }}>
+                <WifiIcon size={20} color="#0088FF" />
+                <span style={{
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: '#0088FF',
+                  boxShadow: '0 0 8px #0088FF',
+                }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-primary, #062B66)' }}>
+                  {activeVoucher.plan || 'Saved Wi-Fi Pass'} • <span style={{ fontFamily: "'JetBrains Mono', monospace", color: '#035EC8' }}>{activeVoucher.code}</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#035EC8', fontWeight: 700, marginTop: '2px' }}>
+                  {countdownText}{!user ? ' • Saved on this device' : ''}
+                </div>
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-primary, #062B66)' }}>
-                Active Wi-Fi Session
-              </div>
-              <div style={{ fontSize: '12px', color: '#035EC8', fontWeight: 700, marginTop: '2px' }}>
-                {countdownText} remaining
-              </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={handleCopyPin}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '999px',
+                  background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
+                  color: '#FFFFFF',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                {copiedPin ? '✓ Copied' : 'Copy PIN'}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/vouchers/status?code=${encodeURIComponent(activeVoucher.code)}`)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '999px',
+                  background: '#E6F2FF',
+                  color: '#035EC8',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  border: '1px solid #BFDBFE',
+                  cursor: 'pointer',
+                }}
+              >
+                Connect / Timer →
+              </button>
             </div>
           </div>
 
-          <button
-            onClick={() => router.push(`/vouchers/status?code=${encodeURIComponent(activeVoucher.code)}`)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: '999px',
-              background: '#E6F2FF',
-              color: '#035EC8',
-              fontSize: '12px',
-              fontWeight: 800,
-              border: '1px solid #BFDBFE',
-              cursor: 'pointer',
-            }}
-          >
-            Session Info →
-          </button>
+          {savedVouchers.length > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #EFF6FF', paddingTop: '8px', fontSize: '12px' }}>
+              <span style={{ color: 'var(--text-muted, #64748B)', fontWeight: 600 }}>
+                {savedVouchers.length} saved passes on this device
+              </span>
+              <button
+                type="button"
+                onClick={() => router.push('/vouchers')}
+                style={{ background: 'none', border: 'none', color: '#035EC8', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+              >
+                View All Saved Passes →
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -854,13 +906,13 @@ export default function HomePage() {
             width: '42px',
             height: '42px',
             borderRadius: '14px',
-            background: 'rgba(16, 185, 129, 0.12)',
+            background: '#E6F2FF',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 8px',
           }}>
-            <WifiIcon size={20} color="#10B981" />
+            <WifiIcon size={20} color="#035EC8" />
           </div>
           <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary, #121217)', display: 'block' }}>
             All Passes
@@ -900,7 +952,7 @@ export default function HomePage() {
 
         {/* My Passes */}
         <div
-          onClick={() => router.push(user ? '/vouchers' : '/auth')}
+          onClick={() => router.push('/vouchers')}
           style={{
             background: 'var(--surface, #FFFFFF)',
             borderRadius: '18px',

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
 import { useLanguage } from '../context/LanguageContext';
+import { enableGuestSession } from '../../lib/guest-vouchers.js';
 import SupportTicketModal from './SupportTicketModal';
 import {
   HomeIcon,
@@ -22,6 +23,7 @@ const navLinks = [
   { id: 'home', label: 'Home Dashboard', icon: HomeIcon, path: '/' },
   { id: 'landing', label: 'About & Hotspot Zones', icon: ArrowUpRightIcon, path: '/landing' },
   { id: 'packages', label: 'Wi-Fi Passes', icon: WifiIcon, path: '/packages' },
+  { id: 'vouchers', label: 'My Saved Passes', icon: WifiIcon, path: '/vouchers' },
   { id: 'status', label: 'Active Pass Timer', icon: WifiIcon, path: '/vouchers/status' },
   { id: 'wallet', label: 'Wallet & History', icon: WalletIcon, path: '/wallet', auth: true },
   { id: 'reseller', label: 'Reseller & Agent Portal', icon: ShieldIcon, path: '/reseller' },
@@ -38,6 +40,7 @@ export default function SideDrawer({ isOpen, onClose }) {
   const [showSupport, setShowSupport] = useState(false);
 
   const handleNavigate = (path, requiresAuth) => {
+    if (path === '/') enableGuestSession();
     if (requiresAuth && !user) {
       router.push('/auth');
     } else {
@@ -50,6 +53,7 @@ export default function SideDrawer({ isOpen, onClose }) {
     try {
       await signOut();
       localStorage.removeItem('asuk_guest_session');
+      try { sessionStorage.removeItem('asuk_dashboard_active'); } catch {}
       router.push('/auth');
     } catch (err) {
       console.error('Sign out error:', err);
@@ -122,11 +126,11 @@ export default function SideDrawer({ isOpen, onClose }) {
               width: '32px',
               height: '32px',
               borderRadius: '10px',
-              background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+              background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(52, 168, 83, 0.35)',
+              boxShadow: '0 4px 12px rgba(0, 136, 255, 0.35)',
             }}>
               <WifiIcon size={17} color="#FFFFFF" />
             </div>
@@ -154,10 +158,10 @@ export default function SideDrawer({ isOpen, onClose }) {
 
         {/* User Identity Card */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(52, 168, 83, 0.08) 0%, rgba(20, 24, 28, 0.02) 100%)',
+          background: 'linear-gradient(135deg, rgba(0, 136, 255, 0.08) 0%, rgba(6, 43, 102, 0.02) 100%)',
           borderRadius: '20px',
           padding: '16px',
-          border: '1.5px solid rgba(52, 168, 83, 0.2)',
+          border: '1.5px solid #BFDBFE',
           marginBottom: '20px',
           boxShadow: '0 4px 16px rgba(0,0,0,0.02)',
         }}>
@@ -166,14 +170,14 @@ export default function SideDrawer({ isOpen, onClose }) {
               width: '46px',
               height: '46px',
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+              background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
               color: '#FFFFFF',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '18px',
               fontWeight: 800,
-              boxShadow: '0 4px 12px rgba(52, 168, 83, 0.3)',
+              boxShadow: '0 4px 12px rgba(0, 136, 255, 0.3)',
               border: '2px solid #FFFFFF',
               flexShrink: 0,
             }}>
@@ -193,7 +197,7 @@ export default function SideDrawer({ isOpen, onClose }) {
             <div style={{
               marginTop: '12px',
               paddingTop: '12px',
-              borderTop: '1px solid rgba(52, 168, 83, 0.15)',
+              borderTop: '1px solid #DBEAFE',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -202,7 +206,7 @@ export default function SideDrawer({ isOpen, onClose }) {
                 <span style={{ fontSize: '11px', color: 'var(--text-muted, #8E8E93)', fontWeight: 700, textTransform: 'uppercase' }}>
                   Wallet Balance
                 </span>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: '#34A853', marginTop: '1px' }}>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#035EC8', marginTop: '1px' }}>
                   {formatPrice(walletBalance)}
                 </div>
               </div>
@@ -215,13 +219,13 @@ export default function SideDrawer({ isOpen, onClose }) {
                 style={{
                   padding: '6px 12px',
                   borderRadius: '999px',
-                  background: '#34A853',
+                  background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                   color: '#FFFFFF',
                   fontSize: '11.5px',
                   fontWeight: 800,
                   border: 'none',
                   cursor: 'pointer',
-                  boxShadow: '0 3px 10px rgba(52, 168, 83, 0.3)',
+                  boxShadow: '0 3px 10px rgba(0, 136, 255, 0.3)',
                 }}
               >
                 + Top Up
@@ -238,7 +242,7 @@ export default function SideDrawer({ isOpen, onClose }) {
                 width: '100%',
                 padding: '8px',
                 borderRadius: '12px',
-                background: '#34A853',
+                background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                 color: '#FFFFFF',
                 fontSize: '12px',
                 fontWeight: 800,
@@ -271,13 +275,13 @@ export default function SideDrawer({ isOpen, onClose }) {
                   justifyContent: 'space-between',
                   padding: '12px 14px',
                   borderRadius: '14px',
-                  background: isActive ? 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)' : 'transparent',
+                  background: isActive ? 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)' : 'transparent',
                   color: isActive ? '#FFFFFF' : 'var(--text-primary, #121217)',
                   border: 'none',
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 0.15s ease',
-                  boxShadow: isActive ? '0 4px 14px rgba(52, 168, 83, 0.35)' : 'none',
+                  boxShadow: isActive ? '0 4px 14px rgba(0, 136, 255, 0.35)' : 'none',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -324,7 +328,7 @@ export default function SideDrawer({ isOpen, onClose }) {
                 Customer Helpdesk
               </span>
             </div>
-            <span style={{ fontSize: '11px', color: '#34A853', fontWeight: 800, background: 'rgba(52, 168, 83, 0.12)', padding: '2px 8px', borderRadius: '999px' }}>
+            <span style={{ fontSize: '11px', color: '#035EC8', fontWeight: 800, background: '#EFF6FF', padding: '2px 8px', borderRadius: '999px' }}>
               24/7
             </span>
           </button>
@@ -352,7 +356,7 @@ export default function SideDrawer({ isOpen, onClose }) {
               style={{
                 padding: '4px 10px',
                 borderRadius: '999px',
-                background: '#34A853',
+                background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                 color: '#FFFFFF',
                 fontSize: '11px',
                 fontWeight: 700,

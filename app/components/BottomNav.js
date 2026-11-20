@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
+import { enableGuestSession } from '../../lib/guest-vouchers.js';
 import { HomeIcon, WifiIcon, ActivityIcon, WalletIcon, PieChartIcon, UserIcon } from './Icons';
 
 const navItems = [
@@ -29,14 +30,14 @@ export default function BottomNav() {
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 999,
-        background: 'rgba(18, 20, 26, 0.92)',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
+        background: 'rgba(6, 43, 102, 0.94)',
+        border: '1px solid rgba(255, 255, 255, 0.14)',
         borderRadius: '999px',
         padding: '6px 8px',
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
-        boxShadow: '0 20px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.2), 0 4px 20px rgba(52, 168, 83, 0.2)',
+        boxShadow: '0 20px 48px rgba(6, 43, 102, 0.35), 0 0 0 1px rgba(0, 136, 255, 0.2), 0 4px 20px rgba(0, 136, 255, 0.22)',
         backdropFilter: 'blur(28px)',
         WebkitBackdropFilter: 'blur(28px)',
         maxWidth: 'calc(100vw - 24px)',
@@ -62,7 +63,7 @@ export default function BottomNav() {
               className="dock-pill-active"
               onClick={() => router.push(item.path)}
               style={{
-                background: 'linear-gradient(135deg, #34A853 0%, #1E8E3E 100%)',
+                background: 'linear-gradient(135deg, #035EC8 0%, #0088FF 100%)',
                 color: '#FFFFFF',
                 borderRadius: '999px',
                 padding: '9px 16px',
@@ -73,7 +74,7 @@ export default function BottomNav() {
                 gap: '7px',
                 border: 'none',
                 cursor: 'pointer',
-                boxShadow: '0 4px 18px rgba(52, 168, 83, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                boxShadow: '0 4px 18px rgba(0, 136, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
                 whiteSpace: 'nowrap',
                 letterSpacing: '-0.2px',
                 transition: 'transform 0.15s ease',
@@ -89,7 +90,10 @@ export default function BottomNav() {
           <button
             key={item.id}
             className="dock-item"
-            onClick={() => router.push(item.path)}
+            onClick={() => {
+              if (item.path === '/') enableGuestSession();
+              router.push(item.path);
+            }}
             aria-label={item.label}
             title={item.label}
             style={{
@@ -99,14 +103,14 @@ export default function BottomNav() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#9CA3AF',
+              color: '#CBD5E1',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
             }}
           >
-            <IconComponent size={19} color="#9CA3AF" />
+            <IconComponent size={19} color="#CBD5E1" />
           </button>
         );
       })}

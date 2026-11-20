@@ -232,3 +232,62 @@ test('recoverMonnifyPurchase uses createPaymentHeaders and wallet topup includes
   assert.ok(walletSrc.includes('/wallet?deposit=success&amount='), 'wallet redirect_url must carry amount parameter');
   assert.ok(walletSrc.includes('finalizeTopup(resolvedAmount, resolvedRef, redirectTxId'), 'wallet redirect return must verify transaction_id');
 });
+
+test('guest voucher storage persists multiple passes across refresh and enables dashboard guest session', async () => {
+  const localMap = new Map();
+  const sessionMap = new Map();
+  let dispatchedEvents = 0;
+
+  const mockStorage = (map) => ({
+    getItem: k => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: k => map.delete(k),
+  });
+
+  const helper = await loadModule('lib/guest-vouchers.js', {
+    localStorage: mockStorage(localMap),
+    sessionStorage: mockStorage(sessionMap),
+    Event: class MockEvent { constructor(type) { this.type = type; } },
+    window: { dispatchEvent() { dispatchedEvents++; } },
+  }, ['enableGuestSession', 'hasGuestOrVoucherSession', 'saveGuestVoucher', 'getGuestVouchers']);
+
+  assert.equal(helper.hasGuestOrVoucherSession(), false);
+
+  helper.saveGuestVoucher({ code: '11111', plan: '1GB', duration: '24h', price: 100, purchasedAt: 1000 });
+  helper.saveGuestVoucher({ code: '22222', plan: '12 Hours', duration: '12h', price: 250, purchasedAt: 2000 });
+  helper.saveGuestVoucher({ code: '11111', plan: '1GB Updated', duration: '24h', price: 100, purchasedAt: 3000 });
+
+  assert.equal(helper.hasGuestOrVoucherSession(), true);
+  assert.equal(localMap.get('asuk_guest_session'), 'true');
+  assert.equal(sessionMap.get('asuk_dashboard_active'), '1');
+
+  const list = helper.getGuestVouchers();
+  assert.equal(list.length, 2, 'duplicate voucher codes should be deduplicated');
+  assert.equal(list[0].code, '11111');
+  assert.equal(list[1].code, '22222');
+  assert.equal(dispatchedEvents, 3);
+});
+
+test('dashboard, vouchers, landing, and auth screens preserve guest persistence and Navy-Azure branding', async () => {
+  const homeSrc = await read('app/page.js');
+  assert.ok(homeSrc.includes('hasGuestOrVoucherSession'), 'Dashboard must preserve session when guest/voucher exists');
+  assert.ok(homeSrc.includes("router.push('/vouchers')"), 'Dashboard My Passes button must open /vouchers directly');
+
+  const vouchersSrc = await read('app/vouchers/page.js');
+  assert.ok(!vouchersSrc.includes("router.replace('/auth')"), 'Vouchers page must stay accessible to guests');
+  assert.ok(vouchersSrc.includes('getGuestVouchers'), 'Vouchers page must load guest vouchers from localStorage');
+
+  const landingSrc = await read('app/landing/page.js');
+  assert.ok(landingSrc.includes('Continue as Guest (Dashboard)'), 'Landing page must display prominent Guest Dashboard button');
+
+  const authSrc = await read('app/auth/page.js');
+  const loginSrc = await read('app/login/page.js');
+  const resetSrc = await read('app/auth/reset-password/page.js');
+  assert.ok(authSrc.includes('Continue as Guest — Open Dashboard'), 'Auth page must highlight Guest Dashboard button');
+
+  for (const [name, src] of [['auth', authSrc], ['login', loginSrc], ['reset-password', resetSrc]]) {
+    for (const green of ['#34A853', '#1E8E3E', '#2D9249', '#16A34A', '#15803D', '#DCFCE7', '#BBF7D0', '#10B981']) {
+      assert.equal(src.includes(green), false, `${name} should not contain legacy green token ${green}`);
+    }
+  }
+});
