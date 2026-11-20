@@ -150,7 +150,7 @@ export async function POST(request) {
 
     // Calculate when this voucher expires (wall-clock time)
     const voucherExpiresAt = calculateExpiresAt(effectiveDuration);
-    const voucherLimitUptime = uptimeMap[effectiveDuration] || '1d';
+    const voucherLimitUptime = uptimeMap[effectiveDuration] || effectiveDuration || '1d';
 
     const rateLimit = `${planUploadSpeed}/${planDownloadSpeed}`;
 
@@ -165,7 +165,7 @@ export async function POST(request) {
           code,
           password: code,
           profile: effectivePlanName,
-          limitUptime: uptimeMap[effectiveDuration] || '1d',
+          limitUptime: voucherLimitUptime,
           comment: `User ${effectiveUserId} - ${effectivePlanName} - ₦${numericPrice}`,
           shared_users: planDevices,
           rate_limit: rateLimit,

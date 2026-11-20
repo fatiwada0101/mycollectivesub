@@ -117,6 +117,7 @@ export async function POST(request) {
       download_speed = '12M',
       router_id = null,
       location_id = null,
+      add_to_fallback = false,
     } = body;
 
     const count = Math.min(Math.max(Number(quantity) || 1, 1), 100);
@@ -165,7 +166,7 @@ export async function POST(request) {
     // Check global hotspot settings for sharing and expiry mode
     let effectiveDevices = Number(devices) || 1;
     let expiryMode = 'elapsed';
-    let hotspotUrl = 'asuktech.net';
+    let hotspotUrl = 'hotspot.mycollectivesub.net';
     let effectiveLocationId = location_id || null;
 
     if (router_id) {
@@ -284,7 +285,7 @@ export async function POST(request) {
           throw new Error('Voucher could not be saved in the database. Router rollback was attempted; check router users before retrying.');
         }
 
-        const cleanHotspot = hotspotUrl || 'asuktech.net';
+        const cleanHotspot = hotspotUrl || 'hotspot.mycollectivesub.net';
         const qrUrl = `http://${cleanHotspot}/login?code=${encodeURIComponent(code)}`;
 
         results.push({
@@ -317,12 +318,38 @@ export async function POST(request) {
 
     const totalFailed = count - results.length;
 
+    let fallbackAdded = 0;
+    if (add_to_fallback && results.length > 0) {
+      try {
+        const { data: matchedPlan } = await supabaseAdmin
+          .from('plans')
+          .select('id')
+          .eq('name', plan_name)
+          .maybeSingle();
+        const fallbackRows = results.map(v => ({
+          voucher_code: v.code,
+          plan_id: matchedPlan?.id || null,
+          profile_name: plan_name,
+          duration: limitUptime,
+          status: 'available',
+          is_used: false,
+        }));
+        const { error: fbErr } = await supabaseAdmin
+          .from('fallback_vouchers')
+          .upsert(fallbackRows, { onConflict: 'voucher_code', ignoreDuplicates: true });
+        if (!fbErr) fallbackAdded = fallbackRows.length;
+      } catch (e) {
+        console.warn('Backup pool sync warning:', e.message);
+      }
+    }
+
     return NextResponse.json({
       success: results.length > 0,
       ...(results.length === 0 ? { error: errors[0]?.error ? `Router error: ${errors[0].error}` : 'No vouchers were created' } : {}),
       batch_id: batchId,
       generated: results.length,
       failed: totalFailed,
+      fallback_added: fallbackAdded,
       vouchers: results,
       errors: errors.length > 0 ? errors : undefined,
       expiry_type,

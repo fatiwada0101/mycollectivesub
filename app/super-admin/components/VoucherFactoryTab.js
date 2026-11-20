@@ -747,7 +747,15 @@ export default function VoucherFactoryTab({
                     </div>
                   </div>
 
-                  <div className="sa-plan-form-footer" style={{ marginTop: 18 }}>
+                  <div className="sa-plan-form-footer" style={{ marginTop: 18, justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#062B66', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!voucherGen.add_to_fallback}
+                        onChange={e => setVoucherGen({ ...voucherGen, add_to_fallback: e.target.checked })}
+                      />
+                      <span>Also stock into Online Backup Pool (Fallback Vouchers)</span>
+                    </label>
                     <button className="sa-btn-primary sa-btn-lg" onClick={handleGenerateVouchers} disabled={genLoading}>
                       {genLoading ? `Generating ${voucherGen.quantity} vouchers...` : `🎟️ Generate ${voucherGen.quantity} Vouchers`}
                     </button>

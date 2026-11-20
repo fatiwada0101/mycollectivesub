@@ -1,27 +1,29 @@
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
-import { checkMikroTikHealth, isMikroTikConfigured } from '@/lib/mikrotik.js';
+import { checkMikroTikHealth, getMikroTikConfig, isMikroTikConfigured } from '@/lib/mikrotik.js';
 
 export async function GET() {
   try {
     // Fetch settings and check router & fallback status concurrently
-    const [settingsRes, healthRes, fallbackRes, configuredRes] = await Promise.allSettled([
+    const [settingsRes, healthRes, fallbackRes, configuredRes, routerConfigRes] = await Promise.allSettled([
       supabaseAdmin
         .from('app_settings')
         .select('key, value')
         .in('key', ['flutterwave', 'monnify', 'payment_gateway', 'branding', 'mikrotik']),
-      checkMikroTikHealth(2500),
+      checkMikroTikHealth(4500),
       supabaseAdmin
         .from('fallback_vouchers')
         .select('profile_name, plan_id')
         .eq('is_used', false)
         .or('status.is.null,status.eq.available'),
       isMikroTikConfigured(),
+      getMikroTikConfig(),
     ]);
 
     const settings = settingsRes.status === 'fulfilled' && settingsRes.value.data ? settingsRes.value.data : [];
     const mikrotikOnline = healthRes.status === 'fulfilled' ? !!healthRes.value : false;
     const mikrotikConfigured = configuredRes.status === 'fulfilled' ? !!configuredRes.value : false;
+    const defaultRouterCfg = routerConfigRes.status === 'fulfilled' ? routerConfigRes.value : null;
     const fallbackRows = fallbackRes.status === 'fulfilled' && fallbackRes.value.data ? fallbackRes.value.data : [];
 
     const fallbackCounts = {};
@@ -50,8 +52,8 @@ export async function GET() {
       app_url: process.env.NEXT_PUBLIC_APP_URL || '',
     };
 
-    let hotspotUrl = '';
-    let wifiSsid = 'MyCollectiveSub Wi-Fi';
+    let hotspotUrl = defaultRouterCfg?.hotspot_url || '';
+    let wifiSsid = defaultRouterCfg?.wifi_ssid || 'MyCollectiveSub Wi-Fi';
 
     if (settings) {
       for (const s of settings) {

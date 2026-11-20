@@ -187,7 +187,7 @@ export async function POST(request) {
           code,
           password: code,
           profile: effectivePlanName,
-          limitUptime: uptimeMap[effectiveDuration] || '1d',
+          limitUptime: uptimeMap[effectiveDuration] || effectiveDuration || '1d',
           comment: `Online Pay: ${email || phone || 'Guest'} - ${effectivePlanName} - ₦${authoritativePrice} [Ref: ${tx_ref}]`,
           shared_users: planDevices,
           rate_limit: rateLimit,
