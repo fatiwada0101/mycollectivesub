@@ -104,6 +104,7 @@ const server = http.createServer(async (req, res) => {
         vpsHubId: payload.vpsHubId || null,
         locationId: payload.locationId || null,
         dnsName: payload.dnsName || 'hotspot.mycollectivesub.net',
+        alreadyConfigured: payload.alreadyConfigured !== false,
         onProgress: (ev) => steps.push(ev),
       });
       return sendJson(res, 200, { ...result, steps });

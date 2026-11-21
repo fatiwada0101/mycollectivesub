@@ -204,6 +204,8 @@ test('Zero-touch RouterOS script enforces WireGuard, MAC-cookie (4w2d), and stri
   assert.ok(script.includes(EXPIRY_SCRIPT_NAME), 'must install 10s sweep script & scheduler');
   assert.ok(script.includes('interval=10s'), 'must schedule 10-second offline expiry sweep');
   assert.ok(script.includes('limit-uptime'), 'v3 script must auto-convert non-ANV1 limit-uptime vouchers');
+  assert.ok(script.includes('and dns-name=""'), 'default preserveExistingConfig must not overwrite existing hotspot dns-name');
+  assert.ok(script.includes('curHook'), 'default preserveExistingConfig must preserve unrelated vendor on-login hooks');
   assert.ok(script.includes('/api/onboarding/bootstrap'), 'must include zero-SSH VPS callback');
 });
 

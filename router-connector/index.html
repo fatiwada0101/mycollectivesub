@@ -151,6 +151,13 @@
         <label>Location / Site (Optional)</label>
         <select id="locationId"><option value="">— Unassigned —</option></select>
       </div>
+      <div style="grid-column: 1 / -1;">
+        <label>Router Setup Mode</label>
+        <select id="routerMode">
+          <option value="existing">Already Configured Router — Connect to Cloud &amp; Generate Vouchers (Preserves existing Hotspot, users &amp; DNS)</option>
+          <option value="fresh">Brand-New Router — Full Hotspot, Walled Garden &amp; Branded Login Page Auto-Setup</option>
+        </select>
+      </div>
     </div>
     <button id="onboardBtn" class="btn" onclick="startOnboarding()">Auto-Configure &amp; Connect Router</button>
     <div id="onboardStatus" class="status-box"></div>
@@ -225,6 +232,7 @@
     const localPassword = document.getElementById('localPass').value;
     const vpsHubId = document.getElementById('vpsHubId').value;
     const locationId = document.getElementById('locationId').value;
+    const alreadyConfigured = document.getElementById('routerMode').value !== 'fresh';
     const cloudUrl = document.getElementById('cloudUrl').value.trim();
 
     if (!routerName || !localIp) {
@@ -246,6 +254,7 @@
         body: JSON.stringify({
           localIp, localUsername, localPassword, routerName,
           cloudUrl, adminToken, vpsHubId: vpsHubId || null, locationId: locationId || null,
+          alreadyConfigured,
         }),
       });
       const data = await res.json();
