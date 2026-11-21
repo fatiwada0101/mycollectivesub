@@ -14,6 +14,7 @@ import {
   ZapIcon,
 } from '../../components/Icons';
 import ZeroTouchHubPanel from './ZeroTouchHubPanel';
+import RouterBillingPanel from './RouterBillingPanel';
 
 function formatLastSeen(ts) {
   if (!ts) return 'Never';
@@ -390,6 +391,16 @@ export default function LocationsTab({
         showToast={showToast}
         locations={locations}
         onRouterOnboarded={() => {
+          fetchData();
+          onRouterChange?.();
+        }}
+      />
+
+      {/* Optional Monthly Router Subscription & Expiry-Pause Control */}
+      <RouterBillingPanel
+        adminHeaders={adminHeaders}
+        showToast={showToast}
+        onUpdated={() => {
           fetchData();
           onRouterChange?.();
         }}

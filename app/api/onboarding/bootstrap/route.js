@@ -40,9 +40,12 @@ export async function GET(request) {
     const reqOrigin = new URL(request.url).origin;
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
     const callbackUrl = `${baseUrl}/api/onboarding/bootstrap`;
+    const vpsSyncUrl = `${baseUrl}/api/onboarding/vps-sync`;
     const heartbeatUrl = router.polling_secret
       ? `${baseUrl}/api/mikrotik/heartbeat?secret=${encodeURIComponent(router.polling_secret)}&preserve_ip=1`
       : '';
+
+    const preserveExisting = searchParams.get('preserve') !== '0';
 
     const rsc = generateZeroTouchRouterScript({
       routerName: router.name,
@@ -51,12 +54,15 @@ export async function GET(request) {
       vpsPublicIp: hub.public_ip,
       vpsWgPort: hub.wg_port || 51820,
       vpsWgPublicKey: hub.wg_public_key,
-      vpsWgSubnet: hub.wg_subnet || '10.100.0.0/24',
+      vpsWgSubnet: hub.wg_subnet || '10.100.0.0/16',
       tunnelIp: router.wg_tunnel_ip,
       dnsName: router.dns_name || 'hotspot.mycollectivesub.net',
+      preserveExistingConfig: preserveExisting,
       callbackUrl,
       bootstrapToken: token,
       heartbeatUrl,
+      vpsSyncUrl,
+      pollingSecret: router.polling_secret || '',
     });
 
     return new NextResponse(rsc, {

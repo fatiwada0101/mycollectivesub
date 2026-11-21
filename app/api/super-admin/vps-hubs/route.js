@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { validateAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth.js';
-import { maskVpsHub, normalizeProvisionerUrl, testVpsHubConnection } from '@/lib/vps-hub.js';
+import {
+  maskVpsHub,
+  normalizeProvisionerUrl,
+  testVpsHubConnection,
+  suggestNextVpsSubnet,
+  DEFAULT_WG_SUBNET,
+  DEFAULT_PORT_RANGE_START,
+  DEFAULT_PORT_RANGE_END,
+  DEFAULT_MAX_ROUTERS_PER_HUB,
+} from '@/lib/vps-hub.js';
 import { logger } from '@/lib/logger.js';
 
 function isMissingTableError(err) {
@@ -31,9 +40,33 @@ export async function GET(request) {
       throw error;
     }
 
+    const { data: routerRows } = await supabaseAdmin
+      .from('routers')
+      .select('id, vps_hub_id, ip_address');
+
+    const maskedHubs = (data || []).map((hub) => {
+      const count = (routerRows || []).filter(
+        (r) => r.vps_hub_id === hub.id || (!r.vps_hub_id && hub.public_ip && r.ip_address === hub.public_ip)
+      ).length;
+      return maskVpsHub(hub, count);
+    });
+
+    const totalCapacity = maskedHubs.filter((h) => h.is_active).reduce((sum, h) => sum + (h.effective_capacity || 0), 0);
+    const totalRoutersOnHubs = maskedHubs.reduce((sum, h) => sum + (h.router_count || 0), 0);
+    const onlineHubsCount = maskedHubs.filter((h) => h.is_active && h.status === 'online').length;
+
     return NextResponse.json({
       success: true,
-      hubs: (data || []).map(maskVpsHub),
+      hubs: maskedHubs,
+      fleet_summary: {
+        total_hubs: maskedHubs.length,
+        online_hubs: onlineHubsCount,
+        total_routers_on_hubs: totalRoutersOnHubs,
+        total_capacity: totalCapacity,
+        remaining_capacity: Math.max(0, totalCapacity - totalRoutersOnHubs),
+        suggested_next_subnet: suggestNextVpsSubnet(data || []),
+        default_max_routers_per_hub: DEFAULT_MAX_ROUTERS_PER_HUB,
+      },
     });
   } catch (err) {
     logger.error('GET /api/super-admin/vps-hubs error:', { error: err.message });
@@ -60,8 +93,10 @@ export async function POST(request) {
 
     let wgPublicKey = String(body.wg_public_key || '').trim();
     let wgPort = Number(body.wg_port) || 51820;
-    let wgSubnet = String(body.wg_subnet || '10.100.0.0/24').trim();
+    const { data: existingHubs } = await supabaseAdmin.from('vps_hubs').select('wg_subnet');
+    let wgSubnet = String(body.wg_subnet || suggestNextVpsSubnet(existingHubs || []) || DEFAULT_WG_SUBNET).trim();
     let wgInterface = String(body.wg_interface || 'wg0').trim();
+    const maxRouters = Math.max(1, Number(body.max_routers) || DEFAULT_MAX_ROUTERS_PER_HUB);
     let status = 'unknown';
     let lastHealthAt = null;
     let health = null;
@@ -98,8 +133,9 @@ export async function POST(request) {
         wg_port: wgPort,
         wg_public_key: wgPublicKey || null,
         wg_subnet: wgSubnet,
-        port_range_start: Number(body.port_range_start) || 8443,
-        port_range_end: Number(body.port_range_end) || 8999,
+        port_range_start: Number(body.port_range_start) || DEFAULT_PORT_RANGE_START,
+        port_range_end: Number(body.port_range_end) || DEFAULT_PORT_RANGE_END,
+        max_routers: maxRouters,
         is_active: body.is_active !== false,
         is_default: Boolean(body.is_default),
         status,
@@ -148,9 +184,10 @@ export async function PUT(request) {
     if (body.wg_interface !== undefined) updates.wg_interface = String(body.wg_interface).trim() || 'wg0';
     if (body.wg_port !== undefined) updates.wg_port = Number(body.wg_port) || 51820;
     if (body.wg_public_key !== undefined) updates.wg_public_key = String(body.wg_public_key).trim() || null;
-    if (body.wg_subnet !== undefined) updates.wg_subnet = String(body.wg_subnet).trim() || '10.100.0.0/24';
-    if (body.port_range_start !== undefined) updates.port_range_start = Number(body.port_range_start) || 8443;
-    if (body.port_range_end !== undefined) updates.port_range_end = Number(body.port_range_end) || 8999;
+    if (body.wg_subnet !== undefined) updates.wg_subnet = String(body.wg_subnet).trim() || DEFAULT_WG_SUBNET;
+    if (body.port_range_start !== undefined) updates.port_range_start = Number(body.port_range_start) || DEFAULT_PORT_RANGE_START;
+    if (body.port_range_end !== undefined) updates.port_range_end = Number(body.port_range_end) || DEFAULT_PORT_RANGE_END;
+    if (body.max_routers !== undefined) updates.max_routers = Math.max(1, Number(body.max_routers) || DEFAULT_MAX_ROUTERS_PER_HUB);
     if (body.is_active !== undefined) updates.is_active = Boolean(body.is_active);
     if (body.is_default !== undefined) {
       updates.is_default = Boolean(body.is_default);

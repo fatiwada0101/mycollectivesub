@@ -15,8 +15,10 @@ fi
 INSTALL_DIR="/opt/mycollectivesub-provisioner"
 WG_IFACE="${WG_INTERFACE:-wg0}"
 WG_PORT="${WG_PORT:-51820}"
-WG_SUBNET="${WG_SUBNET:-10.100.0.0/24}"
-WG_HUB_IP="${WG_HUB_IP:-10.100.0.1/24}"
+WG_SUBNET="${WG_SUBNET:-10.100.0.0/16}"
+WG_HUB_IP="${WG_HUB_IP:-10.100.0.1/16}"
+PORT_RANGE_START="${PORT_RANGE_START:-8443}"
+PORT_RANGE_END="${PORT_RANGE_END:-18442}"
 API_PORT="${PROVISIONER_PORT:-9443}"
 PUBLIC_IP="$(curl -4 -fsSL https://api.ipify.org || hostname -I | awk '{print $1}')"
 WAN_IFACE="$(ip route show default | awk '/default/ {print $5; exit}')"
@@ -34,9 +36,11 @@ if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | sed 's/v//' | cut -d. -f
   apt-get install -y nodejs
 fi
 
-# 3. Enable IPv4 forwarding
+# 3. Enable IPv4 forwarding & scale conntrack for 1,000+ concurrent router tunnels
 sysctl -w net.ipv4.ip_forward=1
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+sysctl -w net.netfilter.nf_conntrack_max=262144 2>/dev/null || true
+grep -q '^net.netfilter.nf_conntrack_max=' /etc/sysctl.conf || echo 'net.netfilter.nf_conntrack_max=262144' >> /etc/sysctl.conf
 
 # 4. Initialize WireGuard hub (idempotent — preserves existing keys & peers!)
 mkdir -p /etc/wireguard
@@ -109,6 +113,7 @@ Environment=WG_CONF_PATH=/etc/wireguard/${WG_IFACE}.conf
 Environment=WG_PUBLIC_KEY_PATH=/etc/wireguard/server_public.key
 Environment=TLS_CERT_PATH=${INSTALL_DIR}/tls.crt
 Environment=TLS_KEY_PATH=${INSTALL_DIR}/tls.key
+Environment=SKIP_PER_PORT_UFW=1
 ExecStart=/usr/bin/node ${INSTALL_DIR}/server.mjs
 Restart=always
 RestartSec=3
@@ -121,11 +126,11 @@ systemctl daemon-reload
 systemctl enable mycollectivesub-vps-provisioner
 systemctl restart mycollectivesub-vps-provisioner
 
-# 7. Firewall rules
+# 7. Firewall rules (10,000 router forwarding ports open in a single UFW range rule)
 ufw allow 22/tcp
 ufw allow "${WG_PORT}/udp"
 ufw allow "${API_PORT}/tcp"
-ufw allow 8443:8999/tcp
+ufw allow "${PORT_RANGE_START}:${PORT_RANGE_END}/tcp"
 ufw --force enable
 
 echo ""

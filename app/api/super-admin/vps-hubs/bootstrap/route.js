@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { validateAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth.js';
 import { generateBootstrapToken, hashBootstrapToken } from '@/lib/zero-touch-onboarding.js';
-import { maskVpsHub } from '@/lib/vps-hub.js';
+import {
+  maskVpsHub,
+  suggestNextVpsSubnet,
+  DEFAULT_PORT_RANGE_START,
+  DEFAULT_PORT_RANGE_END,
+  DEFAULT_MAX_ROUTERS_PER_HUB,
+} from '@/lib/vps-hub.js';
 import { logger } from '@/lib/logger.js';
 
 /**
@@ -24,10 +30,12 @@ export async function POST(request) {
 
     const body = await request.json().catch(() => ({}));
     const name = String(body.name || '').trim();
-    const wgSubnet = String(body.wg_subnet || '10.100.0.0/24').trim();
+    const { data: existingHubs } = await supabaseAdmin.from('vps_hubs').select('wg_subnet');
+    const wgSubnet = String(body.wg_subnet || '').trim() || suggestNextVpsSubnet(existingHubs || []);
     const wgPort = Number(body.wg_port) || 51820;
-    const portStart = Number(body.port_range_start) || 8443;
-    const portEnd = Number(body.port_range_end) || 8999;
+    const portStart = Number(body.port_range_start) || DEFAULT_PORT_RANGE_START;
+    const portEnd = Number(body.port_range_end) || DEFAULT_PORT_RANGE_END;
+    const maxRouters = Math.max(1, Number(body.max_routers) || DEFAULT_MAX_ROUTERS_PER_HUB);
     const isDefault = Boolean(body.is_default);
 
     if (!name) {
@@ -57,6 +65,7 @@ export async function POST(request) {
         wg_subnet: wgSubnet,
         port_range_start: portStart,
         port_range_end: portEnd,
+        max_routers: maxRouters,
         is_active: true,
         is_default: isDefault,
         status: 'pending_bootstrap',

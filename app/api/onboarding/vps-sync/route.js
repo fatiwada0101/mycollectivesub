@@ -1,0 +1,147 @@
+import { NextResponse } from 'next/server.js';
+import { supabaseAdmin } from '@/lib/supabase-server.js';
+import { registerRouterPeerOnVps, isValidWgPublicKey, getHubCidrMask, getHubGatewayIp, DEFAULT_WG_SUBNET } from '@/lib/vps-hub.js';
+import { escapeRouterOsString } from '@/lib/zero-touch-onboarding.js';
+import { logger } from '@/lib/logger.js';
+
+/**
+ * GET /api/onboarding/vps-sync?secret=<router_polling_secret>
+ *
+ * Self-healing VPS Failover endpoint called by a router's 60s `an-watchdog-script`
+ * ONLY when the router can no longer reach its previous WireGuard VPS hub.
+ *
+ * If the admin switched this router to a brand-new VPS Hub (e.g. after an old VPS expired),
+ * this returns a minimal RouterOS `.rsc` script updating ONLY `wg-vps` (tunnel IP, new VPS IP,
+ * new VPS WireGuard public key) — preserving Hotspot, users, bridge, and expiry scripts 100%.
+ */
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const secret = String(searchParams.get('secret') || '').trim();
+    if (!secret || secret.length < 16) {
+      return new NextResponse('# Invalid router secret\n', { status: 400, headers: { 'Content-Type': 'text/plain' } });
+    }
+
+    const { data: router, error } = await supabaseAdmin
+      .from('routers')
+      .select('id, name, port, wg_tunnel_ip, wg_public_key, vps_hub_id, vps_hubs(*)')
+      .eq('polling_secret', secret)
+      .maybeSingle();
+
+    if (error || !router) {
+      return new NextResponse('# Router not found\n', { status: 404, headers: { 'Content-Type': 'text/plain' } });
+    }
+
+    const hub = router.vps_hubs;
+    if (!hub || !hub.public_ip || !hub.wg_public_key || !router.wg_tunnel_ip) {
+      return new NextResponse('# No target VPS hub assigned yet\n', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+    }
+
+    const safeIp = escapeRouterOsString(hub.public_ip);
+    const safeKey = escapeRouterOsString(hub.wg_public_key);
+    const rawSubnet = hub.wg_subnet || DEFAULT_WG_SUBNET;
+    const safeSubnet = escapeRouterOsString(rawSubnet);
+    const prefixLen = getHubCidrMask(rawSubnet);
+    const hubGwIp = getHubGatewayIp(rawSubnet);
+    const safeTunnelIp = escapeRouterOsString(router.wg_tunnel_ip);
+    const wgPort = Number(hub.wg_port) || 51820;
+
+    const reqOrigin = new URL(request.url).origin;
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
+    const vpsSyncUrl = `${baseUrl}/api/onboarding/vps-sync`;
+    const heartbeatUrl = `${baseUrl}/api/mikrotik/heartbeat?secret=${encodeURIComponent(secret)}&preserve_ip=1`;
+    const refreshedWatchdog = `:if ([/ping ${hubGwIp} count=2] = 0) do={ :do { /interface wireguard disable [find where name=\\"wg-vps\\"]; :delay 2s; /interface wireguard enable [find where name=\\"wg-vps\\"] } on-error={}; :do { :local wgK [/interface wireguard get [find where name=\\"wg-vps\\"] public-key]; /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}\\" http-method=post http-header-field=\\"Content-Type: application/json\\" http-data=(\\"{\\\\\\"secret\\\\\\":\\\\\\"${escapeRouterOsString(secret)}\\\\\\",\\\\\\"wg_public_key\\\\\\":\\\\\\"\\" . $wgK . \\"\\\\\\"}\\") mode=https check-certificate=no keep-result=no } on-error={}; :do { /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}?secret=${escapeRouterOsString(secret)}\\" dst-path=\\"mcs-vps-sync.rsc\\" mode=https check-certificate=no; /import mcs-vps-sync.rsc; /file remove mcs-vps-sync.rsc } on-error={} }; :do { /tool fetch url=\\"${escapeRouterOsString(heartbeatUrl)}\\" mode=https check-certificate=no keep-result=no } on-error={}`;
+
+    // Only touch wg-vps if endpoint or public-key actually changed (idempotent, zero churn!)
+    const script = [
+      '# MyCollectiveSub Self-Healing VPS Failover Sync',
+      ':if ([:len [/interface wireguard find where name="wg-vps"]] = 0) do={',
+      '  /interface wireguard add name="wg-vps" listen-port=13231 mtu=1420',
+      '}',
+      ':local curPeer [/interface wireguard peers find where interface="wg-vps"]',
+      ':local needsUpdate true',
+      ':if ([:len $curPeer] = 1) do={',
+      `  :if (([/interface wireguard peers get $curPeer endpoint-address] = "${safeIp}") && ([/interface wireguard peers get $curPeer public-key] = "${safeKey}")) do={`,
+      '    :set needsUpdate false',
+      '  }',
+      '}',
+      ':if ($needsUpdate = true) do={',
+      '  :do { /ip address remove [find where interface="wg-vps"] } on-error={}',
+      `  /ip address add address="${safeTunnelIp}/${prefixLen}" interface="wg-vps" comment="MyCollectiveSub VPS Tunnel"`,
+      '  :do { /interface wireguard peers remove [find where interface="wg-vps"] } on-error={}',
+      `  /interface wireguard peers add interface="wg-vps" endpoint-address="${safeIp}" endpoint-port=${wgPort} public-key="${safeKey}" allowed-address="${safeSubnet}" persistent-keepalive=25s comment="MyCollectiveSub VPS Hub"`,
+      `  :do { /system script set [find where name="an-watchdog-script"] source="${refreshedWatchdog}" } on-error={}`,
+      `  :log info "MyCollectiveSub: Auto-switched WireGuard tunnel to VPS ${safeIp}:${wgPort} (${safeSubnet})"`,
+      '}',
+    ].join('\n');
+
+    return new NextResponse(script, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
+  } catch (err) {
+    logger.error('GET /api/onboarding/vps-sync error:', { error: err.message });
+    return new NextResponse(`# Error: ${err.message}\n`, { status: 500, headers: { 'Content-Type': 'text/plain' } });
+  }
+}
+
+/**
+ * POST /api/onboarding/vps-sync
+ * Router self-reports its WireGuard public key during failover (`{ secret, wg_public_key }`)
+ * so the cloud backend ensures its peer is registered on the router's assigned VPS Hub.
+ */
+export async function POST(request) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const secret = String(body.secret || '').trim();
+    const wgPublicKey = String(body.wg_public_key || '').trim();
+
+    if (!secret || secret.length < 16 || !isValidWgPublicKey(wgPublicKey)) {
+      return NextResponse.json({ success: false, error: 'Valid secret and wg_public_key are required' }, { status: 400 });
+    }
+
+    const { data: router, error } = await supabaseAdmin
+      .from('routers')
+      .select('id, name, port, wg_tunnel_ip, wg_public_key, vps_hub_id, vps_hubs(*)')
+      .eq('polling_secret', secret)
+      .maybeSingle();
+
+    if (error || !router) {
+      return NextResponse.json({ success: false, error: 'Router not found' }, { status: 404 });
+    }
+
+    const hub = router.vps_hubs;
+    if (!hub || !router.wg_tunnel_ip) {
+      return NextResponse.json({ success: false, error: 'No VPS hub assigned to this router' }, { status: 400 });
+    }
+
+    await registerRouterPeerOnVps(hub, {
+      publicKey: wgPublicKey,
+      tunnelIp: router.wg_tunnel_ip,
+      externalPort: router.port,
+      targetPort: 443,
+      routerName: router.name,
+    });
+
+    if (router.wg_public_key !== wgPublicKey) {
+      await supabaseAdmin
+        .from('routers')
+        .update({ wg_public_key: wgPublicKey, updated_at: new Date().toISOString() })
+        .eq('id', router.id);
+    }
+
+    return NextResponse.json({
+      success: true,
+      router_id: router.id,
+      vps_public_ip: hub.public_ip,
+      wg_tunnel_ip: router.wg_tunnel_ip,
+      external_port: router.port,
+    });
+  } catch (err) {
+    logger.error('POST /api/onboarding/vps-sync error:', { error: err.message });
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}

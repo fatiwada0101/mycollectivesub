@@ -3,7 +3,14 @@ import path from 'node:path';
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { hashBootstrapToken } from '@/lib/zero-touch-onboarding.js';
-import { isValidWgPublicKey, normalizeProvisionerUrl } from '@/lib/vps-hub.js';
+import {
+  isValidWgPublicKey,
+  normalizeProvisionerUrl,
+  getHubGatewayCidr,
+  DEFAULT_WG_SUBNET,
+  DEFAULT_PORT_RANGE_START,
+  DEFAULT_PORT_RANGE_END,
+} from '@/lib/vps-hub.js';
 import { logger } from '@/lib/logger.js';
 
 /**
@@ -50,11 +57,11 @@ export async function GET(request) {
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
     const callbackUrl = `${baseUrl}/api/onboarding/vps-installer`;
 
-    const wgSubnet = hub.wg_subnet || '10.100.0.0/24';
-    const wgHubIp = `${wgSubnet.split('/')[0].replace(/\.\d+$/, '.1')}/24`;
+    const wgSubnet = hub.wg_subnet || DEFAULT_WG_SUBNET;
+    const wgHubIp = getHubGatewayCidr(wgSubnet);
     const wgPort = Number(hub.wg_port) || 51820;
-    const portStart = Number(hub.port_range_start) || 8443;
-    const portEnd = Number(hub.port_range_end) || 8999;
+    const portStart = Number(hub.port_range_start) || DEFAULT_PORT_RANGE_START;
+    const portEnd = Number(hub.port_range_end) || DEFAULT_PORT_RANGE_END;
 
     const bashScript = `#!/usr/bin/env bash
 set -euo pipefail
@@ -86,6 +93,9 @@ fi
 
 sysctl -w net.ipv4.ip_forward=1
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+# Scale Linux conntrack table comfortably for 1,000+ concurrent MikroTik WireGuard tunnels
+sysctl -w net.netfilter.nf_conntrack_max=262144 2>/dev/null || true
+grep -q '^net.netfilter.nf_conntrack_max=' /etc/sysctl.conf || echo 'net.netfilter.nf_conntrack_max=262144' >> /etc/sysctl.conf
 
 mkdir -p /etc/wireguard
 chmod 700 /etc/wireguard
@@ -149,6 +159,7 @@ Environment=WG_CONF_PATH=/etc/wireguard/\${WG_IFACE}.conf
 Environment=WG_PUBLIC_KEY_PATH=/etc/wireguard/server_public.key
 Environment=TLS_CERT_PATH=\${INSTALL_DIR}/tls.crt
 Environment=TLS_KEY_PATH=\${INSTALL_DIR}/tls.key
+Environment=SKIP_PER_PORT_UFW=1
 ExecStart=/usr/bin/node \${INSTALL_DIR}/server.mjs
 Restart=always
 RestartSec=3
@@ -238,7 +249,7 @@ export async function POST(request) {
         api_secret: apiSecret,
         wg_public_key: wgPublicKey,
         wg_port: Number(body.wg_port) || 51820,
-        wg_subnet: String(body.wg_subnet || '10.100.0.0/24').trim(),
+        wg_subnet: String(body.wg_subnet || DEFAULT_WG_SUBNET).trim(),
         status: 'online',
         last_health_at: new Date().toISOString(),
         bootstrap_token_hash: null,

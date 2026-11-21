@@ -131,10 +131,11 @@ export function createProvisionerServer(options = {}) {
     apiSecret: options.apiSecret ?? process.env.PROVISIONER_API_SECRET ?? '',
     wgInterface: options.wgInterface ?? process.env.WG_INTERFACE ?? 'wg0',
     wgPort: Number(options.wgPort ?? process.env.WG_PORT ?? 51820),
-    wgSubnet: options.wgSubnet ?? process.env.WG_SUBNET ?? '10.100.0.0/24',
+    wgSubnet: options.wgSubnet ?? process.env.WG_SUBNET ?? '10.100.0.0/16',
     wgConfPath: options.wgConfPath ?? process.env.WG_CONF_PATH ?? '/etc/wireguard/wg0.conf',
     wgPublicKeyPath: options.wgPublicKeyPath ?? process.env.WG_PUBLIC_KEY_PATH ?? '/etc/wireguard/server_public.key',
     publicIp: options.publicIp ?? process.env.VPS_PUBLIC_IP ?? '',
+    skipPerPortUfw: Boolean(options.skipPerPortUfw ?? (process.env.SKIP_PER_PORT_UFW === '1' || process.env.SKIP_PER_PORT_UFW === 'true')),
     dryRun: Boolean(options.dryRun ?? (process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true')),
     dryRunPublicKey: options.dryRunPublicKey ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
   };
@@ -216,9 +217,11 @@ export function createProvisionerServer(options = {}) {
     ensureIptablesRule(null, 'FORWARD', [
       '-p', 'tcp', '-d', tunnelIp, '--dport', String(dstPort), '-j', 'ACCEPT',
     ]);
-    try {
-      execFileSync('ufw', ['allow', `${externalPort}/tcp`], { stdio: 'ignore' });
-    } catch {}
+    if (!cfg.skipPerPortUfw) {
+      try {
+        execFileSync('ufw', ['allow', `${externalPort}/tcp`], { stdio: 'ignore' });
+      } catch {}
+    }
     try {
       execFileSync('netfilter-persistent', ['save'], { stdio: 'ignore' });
     } catch {}

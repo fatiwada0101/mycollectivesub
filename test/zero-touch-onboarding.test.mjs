@@ -4,7 +4,14 @@ import net from 'node:net';
 import fs from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { createProvisionerServer, isValidWgPublicKey } from '../vps-provisioner/server.mjs';
-import { computeFreeRouterSlot, maskVpsHub } from '../lib/vps-hub.js';
+import {
+  computeFreeRouterSlot,
+  maskVpsHub,
+  parseCidrSubnet,
+  suggestNextVpsSubnet,
+  selectHubForRouter,
+  getHubCapacityMetrics,
+} from '../lib/vps-hub.js';
 import {
   generateZeroTouchRouterScript,
   generateBootstrapToken,
@@ -18,6 +25,7 @@ import {
   RouterOsBinaryClient,
 } from '../lib/routeros-api.js';
 import { EXPIRY_SCRIPT_NAME, LOGIN_MARKER } from '../lib/voucher-expiry.js';
+import { evaluateRouterBillingState, DEFAULT_ROUTER_BILLING_SETTINGS } from '../lib/router-billing.js';
 
 const read = (file) => fs.readFile(new URL(`../${file}`, import.meta.url), 'utf8');
 const VALID_WG_KEY_1 = 'kL8x9P2mN4qR7tV1wY5zA3bC6dE8fG0hJ2kL4mN6pQ8=';
@@ -270,11 +278,13 @@ test('RouterOS Binary API client encodes/decodes word lengths and executes comma
 });
 
 test('Zero-regression architecture guards: CSRF exemption, Phase 3 cloud-init/desktop/mobile scaffolding, and modular UI', async () => {
-  const [middlewareSrc, locationsSrc, vpsBootstrapSrc, vpsInstallerSrc, desktopMainSrc, androidPluginSrc, androidBridgeSrc] = await Promise.all([
+  const [middlewareSrc, locationsSrc, vpsBootstrapSrc, vpsInstallerSrc, vpsSyncSrc, vpsMigrateSrc, desktopMainSrc, androidPluginSrc, androidBridgeSrc] = await Promise.all([
     read('middleware.js'),
     read('app/super-admin/components/LocationsTab.js'),
     read('app/api/super-admin/vps-hubs/bootstrap/route.js'),
     read('app/api/onboarding/vps-installer/route.js'),
+    read('app/api/onboarding/vps-sync/route.js'),
+    read('app/api/super-admin/vps-hubs/migrate/route.js'),
     read('desktop/main.mjs'),
     read('mobile/android/MikroTikLocalPlugin.java'),
     read('mobile/src/mikrotik-native.js'),
@@ -283,7 +293,193 @@ test('Zero-regression architecture guards: CSRF exemption, Phase 3 cloud-init/de
   assert.ok(locationsSrc.includes('ZeroTouchHubPanel'), 'ZeroTouchHubPanel must be mounted inside LocationsTab');
   assert.ok(vpsBootstrapSrc.includes('#cloud-config'), 'VPS bootstrap must produce cloud-init YAML');
   assert.ok(vpsInstallerSrc.includes('mycollectivesub-vps-provisioner.service'), 'VPS installer must register systemd provisioner');
+  assert.ok(vpsSyncSrc.includes('endpoint-address') && vpsSyncSrc.includes('registerRouterPeerOnVps'), 'VPS sync must support automatic router failover');
+  assert.ok(vpsMigrateSrc.includes('allocateRouterSlotForHub') && vpsMigrateSrc.includes('registerRouterPeerOnVps'), 'VPS migrate must move routers seamlessly to a replacement VPS');
   assert.ok(desktopMainSrc.includes('onboardLocalRouter'), 'Desktop wrapper must delegate to onboardLocalRouter');
   assert.ok(androidPluginSrc.includes('executeBatch'), 'Android native plugin must expose executeBatch over port 8728');
   assert.ok(androidBridgeSrc.includes('FIRST_LOGIN_SCRIPT') && androidBridgeSrc.includes('EXPIRY_SWEEP_SCRIPT'), 'Android bridge must enforce strict First-Login Expiry v3 defaults');
+});
+
+test('Optional monthly router billing enforcement toggles cleanly globally and per individual router', async () => {
+  const now = Date.parse('2026-11-21T12:00:00Z');
+  const unpaidRouter = {
+    id: 'r1',
+    name: 'Branch 1',
+    subscription_status: 'past_due',
+    subscription_expires_at: '2026-11-10T00:00:00Z',
+    billing_enforcement_override: 'inherit',
+  };
+  const paidRouter = {
+    id: 'r2',
+    name: 'Branch 2',
+    subscription_status: 'active',
+    subscription_expires_at: '2026-12-20T00:00:00Z',
+    billing_enforcement_override: 'inherit',
+  };
+
+  // 1. Default global OFF -> never pauses any router
+  assert.equal(DEFAULT_ROUTER_BILLING_SETTINGS.enabled, false);
+  const offState = evaluateRouterBillingState(unpaidRouter, DEFAULT_ROUTER_BILLING_SETTINGS, now);
+  assert.equal(offState.enforcementActive, false);
+  assert.equal(offState.shouldPauseExpiry, false);
+  assert.equal(offState.showSubscribeNotice, false);
+
+  // 2. Global ON (pause_expiry) -> unpaid pauses expiry + shows notice; paid stays normal
+  const onPause = { ...DEFAULT_ROUTER_BILLING_SETTINGS, enabled: true, mode: 'pause_expiry' };
+  const unpaidState = evaluateRouterBillingState(unpaidRouter, onPause, now);
+  assert.equal(unpaidState.shouldPauseExpiry, true);
+  assert.equal(unpaidState.showSubscribeNotice, true);
+  assert.ok(unpaidState.noticeMessage.length > 10);
+
+  const paidState = evaluateRouterBillingState(paidRouter, onPause, now);
+  assert.equal(paidState.shouldPauseExpiry, false);
+  assert.equal(paidState.showSubscribeNotice, false);
+
+  // 3. Global ON (notice_only) -> shows subscribe notice WITHOUT pausing expiry
+  const onNoticeOnly = { ...DEFAULT_ROUTER_BILLING_SETTINGS, enabled: true, mode: 'notice_only' };
+  const noticeState = evaluateRouterBillingState(unpaidRouter, onNoticeOnly, now);
+  assert.equal(noticeState.shouldPauseExpiry, false);
+  assert.equal(noticeState.showSubscribeNotice, true);
+
+  // 4. Individual router override OFF (exempt) -> stays normal even when global is ON
+  const exemptState = evaluateRouterBillingState({ ...unpaidRouter, billing_enforcement_override: 'force_off' }, onPause, now);
+  assert.equal(exemptState.shouldPauseExpiry, false);
+  assert.equal(exemptState.effectiveStatus, 'exempt');
+
+  // 5. Individual router override ON -> enforces even when global is OFF
+  const forceOnState = evaluateRouterBillingState({ ...unpaidRouter, billing_enforcement_override: 'force_on' }, DEFAULT_ROUTER_BILLING_SETTINGS, now);
+  assert.equal(forceOnState.shouldPauseExpiry, true);
+  assert.equal(forceOnState.showSubscribeNotice, true);
+
+  // 6. Billing SQL migration is idempotent in PGlite
+  const db = new PGlite();
+  try {
+    await db.exec('CREATE TABLE public.routers (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT);');
+    const sql = await read('supabase/migrations/20261121000002_router_billing_enforcement.sql');
+    await db.exec(sql);
+    await db.exec(sql);
+    const cols = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='routers'")).rows.map((r) => r.column_name);
+    assert.ok(cols.includes('billing_enforcement_override'));
+    assert.ok(cols.includes('expiry_paused_by_billing'));
+  } finally {
+    await db.close();
+  }
+});
+
+test('/16 CIDR scaling (1,000+ per VPS), reserved port 9443 guard, and 10,000+ multi-VPS auto-overflow', async () => {
+  // 1. Parse /16 and /24 capacities accurately
+  const s16 = parseCidrSubnet('10.100.0.0/16');
+  assert.equal(s16.prefixLen, 16);
+  assert.equal(s16.gatewayIp, '10.100.0.1');
+  assert.equal(s16.gatewayCidr, '10.100.0.1/16');
+  assert.equal(s16.totalUsableHosts, 65023);
+
+  const s24 = parseCidrSubnet('10.100.0.0/24');
+  assert.equal(s24.prefixLen, 24);
+  assert.equal(s24.totalUsableHosts, 253);
+
+  // 2. Non-overlapping /16 subnet auto-suggestion for 10,000+ fleet scaling
+  assert.equal(suggestNextVpsSubnet([]), '10.100.0.0/16');
+  assert.equal(suggestNextVpsSubnet([{ wg_subnet: '10.100.0.0/16' }]), '10.101.0.0/16');
+  assert.equal(
+    suggestNextVpsSubnet([{ wg_subnet: '10.100.0.0/24' }, { wg_subnet: '10.101.0.0/16' }]),
+    '10.102.0.0/16'
+  );
+
+  // 3. JS slot allocator crosses /24 boundary cleanly (skips .0.255 and .1.0) & skips reserved port 9443
+  const bigHub = {
+    id: 'hub-16',
+    name: 'KVM1-Hub-1',
+    public_ip: '2.25.15.1',
+    wg_subnet: '10.100.0.0/16',
+    port_range_start: 9442,
+    port_range_end: 18442,
+    max_routers: 1000,
+    is_active: true,
+    is_default: true,
+    status: 'online',
+  };
+  const occupied253 = [];
+  for (let i = 2; i <= 254; i++) {
+    occupied253.push({ id: `r-${i}`, vps_hub_id: 'hub-16', wg_tunnel_ip: `10.100.0.${i}`, port: 9442 });
+  }
+  const slotAcrossOctet = computeFreeRouterSlot(bigHub, occupied253);
+  assert.equal(slotAcrossOctet.wg_tunnel_ip, '10.100.1.1', 'must roll cleanly past .0.254 -> .1.1 skipping .0.255 and .1.0');
+  assert.equal(slotAcrossOctet.wg_prefix_len, 16);
+  assert.equal(slotAcrossOctet.external_port, 9444, 'must skip reserved provisioner API port 9443');
+
+  // 4. Multi-VPS automatic overflow when Hub 1 reaches max_routers (scales cleanly to 10,000+)
+  const hub1 = { ...bigHub, id: 'h1', name: 'Hub 1', max_routers: 2, is_default: true, status: 'online' };
+  const hub2 = { ...bigHub, id: 'h2', name: 'Hub 2', public_ip: '2.25.15.2', wg_subnet: '10.101.0.0/16', max_routers: 1000, is_default: false, status: 'online' };
+  const twoOnHub1 = [
+    { id: 'r1', vps_hub_id: 'h1' },
+    { id: 'r2', vps_hub_id: 'h1' },
+  ];
+  const overflowPick = selectHubForRouter([hub1, hub2], twoOnHub1, { preferredHubId: null, allowOverflow: true });
+  assert.equal(overflowPick.hub.id, 'h2', 'must automatically overflow from full Hub 1 to Hub 2');
+  assert.equal(overflowPick.overflowedFrom?.id, 'h1');
+
+  const metrics = getHubCapacityMetrics(hub2, 250);
+  assert.equal(metrics.effective_capacity, 1000);
+  assert.equal(metrics.remaining_slots, 750);
+
+  // 5. RouterOS script uses dynamic /16 mask when hub is /16
+  const script16 = generateZeroTouchRouterScript({
+    routerName: 'Scale-Router-300',
+    vpsPublicIp: '2.25.15.1',
+    vpsWgPublicKey: VALID_WG_KEY_1,
+    vpsWgSubnet: '10.100.0.0/16',
+    tunnelIp: '10.100.1.46',
+  });
+  assert.ok(script16.includes('address="10.100.1.46/16"'), 'must emit dynamic /16 WireGuard address');
+  assert.ok(script16.includes('allowed-address="10.100.0.0/16"'));
+
+  // 6. PGlite verifies SQL migration 20261121000003 idempotency, /16 multi-octet rollover, and 9443 skip
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      CREATE ROLE anon;
+      CREATE ROLE authenticated;
+      CREATE ROLE service_role;
+      CREATE TABLE public.routers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        ip_address TEXT,
+        port INTEGER DEFAULT 443
+      );
+    `);
+    const sql1 = await read('supabase/migrations/20261121000001_zero_touch_vps_hubs.sql');
+    const sql3 = await read('supabase/migrations/20261121000003_scale_10k_vps_subnets.sql');
+    await db.exec(sql1);
+    await db.exec(sql3);
+    await db.exec(sql3); // Idempotent re-apply
+
+    const hub = (await db.query(
+      `INSERT INTO public.vps_hubs (name, public_ip, provisioner_url, api_secret, wg_public_key, port_range_start)
+       VALUES ('Scale Hub 1', '2.25.15.10', 'https://2.25.15.10:9443', 'secret', $1, 9442)
+       RETURNING id, wg_subnet, port_range_end, max_routers`,
+      [VALID_WG_KEY_1]
+    )).rows[0];
+
+    assert.equal(hub.wg_subnet, '10.100.0.0/16');
+    assert.equal(hub.port_range_end, 18442);
+    assert.equal(hub.max_routers, 1000);
+
+    // Fill 10.100.0.2 .. 10.100.0.254 + port 9442
+    await db.query(
+      `INSERT INTO public.routers (name, ip_address, port, vps_hub_id, wg_tunnel_ip)
+       SELECT 'R-' || gs, '2.25.15.10', CASE WHEN gs = 2 THEN 9442 ELSE 10000 + gs END, $1, '10.100.0.' || gs
+       FROM generate_series(2, 254) AS gs`,
+      [hub.id]
+    );
+
+    const pgSlot = (await db.query('SELECT public.allocate_vps_router_slot($1) AS slot', [hub.id])).rows[0].slot;
+    assert.equal(pgSlot.wg_tunnel_ip, '10.100.1.1', 'SQL RPC must cross /24 boundary to 10.100.1.1');
+    assert.equal(pgSlot.wg_prefix_len, 16);
+    assert.equal(pgSlot.wg_gateway_ip, '10.100.0.1');
+    assert.equal(pgSlot.external_port, 9444, 'SQL RPC must skip reserved port 9443');
+    assert.equal(pgSlot.max_routers, 1000);
+  } finally {
+    await db.close();
+  }
 });

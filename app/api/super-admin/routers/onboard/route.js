@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { validateAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth.js';
 import {
-  getDefaultOrSpecificVpsHub,
+  selectVpsHubWithCapacity,
   allocateRouterSlotForHub,
   registerRouterPeerOnVps,
   testVpsHubConnection,
   isValidWgPublicKey,
+  DEFAULT_WG_SUBNET,
 } from '@/lib/vps-hub.js';
 import {
   generateApiPassword,
@@ -47,13 +48,20 @@ export async function POST(request) {
     const dnsName = String(body.dns_name || 'hotspot.mycollectivesub.net').trim();
     const apiUsername = String(body.api_username || 'mycollectivesub').trim();
     const apiPassword = String(body.api_password || '').trim() || generateApiPassword(20);
+    const pollingSecret = generateBootstrapToken().slice(0, 48);
 
     if (!routerName) {
       return NextResponse.json({ success: false, error: 'router_name is required' }, { status: 400 });
     }
 
-    // 1. Resolve target VPS Hub (supports multiple VPS hubs seamlessly)
-    let hub = await getDefaultOrSpecificVpsHub(body.vps_hub_id || null);
+    // 1. Resolve target VPS Hub with automatic multi-VPS capacity overflow (scales to 10,000+ routers)
+    const selection = await selectVpsHubWithCapacity(body.vps_hub_id || null, {
+      allowOverflow: body.allow_overflow !== false,
+    });
+    let hub = selection.hub;
+    const overflowedFromHub = selection.overflowedFrom
+      ? { id: selection.overflowedFrom.id, name: selection.overflowedFrom.name }
+      : null;
 
     // Ensure we know the VPS WireGuard public key (auto-fetch via /health if missing)
     if (!hub.wg_public_key) {
@@ -112,6 +120,7 @@ export async function POST(request) {
           vps_hub_id: hub.id,
           wg_tunnel_ip: slot.wg_tunnel_ip,
           wg_public_key: wgPublicKey,
+          polling_secret: pollingSecret,
           onboarding_status: 'active',
         })
         .select()
@@ -136,9 +145,10 @@ export async function POST(request) {
           public_ip: hub.public_ip,
           wg_port: Number(hub.wg_port) || 51820,
           wg_public_key: hub.wg_public_key,
-          wg_subnet: hub.wg_subnet || '10.100.0.0/24',
+          wg_subnet: hub.wg_subnet || DEFAULT_WG_SUBNET,
           wg_tunnel_ip: slot.wg_tunnel_ip,
           external_port: Number(slot.external_port),
+          overflowed_from_hub: overflowedFromHub,
         },
         credentials: {
           username: apiUsername,
@@ -177,6 +187,7 @@ export async function POST(request) {
         is_active: true,
         vps_hub_id: hub.id,
         wg_tunnel_ip: slot.wg_tunnel_ip,
+        polling_secret: pollingSecret,
         onboarding_status: 'pending_bootstrap',
         bootstrap_token_hash: tokenHash,
         bootstrap_expires_at: expiresAt,
@@ -188,7 +199,8 @@ export async function POST(request) {
 
     const reqOrigin = new URL(request.url).origin;
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
-    const scriptUrl = `${baseUrl}/api/onboarding/bootstrap?token=${rawToken}`;
+    const preserveExisting = body.preserve_existing !== false;
+    const scriptUrl = `${baseUrl}/api/onboarding/bootstrap?token=${rawToken}${preserveExisting ? '' : '&preserve=0'}`;
     const oneLineCommand = `/tool fetch url="${scriptUrl}" dst-path="mcs-onboard.rsc" mode=https check-certificate=no; /import mcs-onboard.rsc; /file remove mcs-onboard.rsc`;
 
     return NextResponse.json({
@@ -199,8 +211,10 @@ export async function POST(request) {
         id: hub.id,
         name: hub.name,
         public_ip: hub.public_ip,
+        wg_subnet: hub.wg_subnet || DEFAULT_WG_SUBNET,
         wg_tunnel_ip: slot.wg_tunnel_ip,
         external_port: Number(slot.external_port),
+        overflowed_from_hub: overflowedFromHub,
       },
       bootstrap: {
         expires_at: expiresAt,
