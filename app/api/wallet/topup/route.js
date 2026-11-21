@@ -86,11 +86,20 @@ export async function POST(request) {
     // 2. IDEMPOTENCY: Check if this ref was already processed
     const { data: existingTx } = await supabaseAdmin
       .from('transactions')
-      .select('id, amount')
+      .select('id, amount, user_id, type')
       .eq('flw_ref', ref)
       .maybeSingle();
 
     if (existingTx) {
+      if (existingTx.type && existingTx.type !== 'wallet_topup') {
+        return NextResponse.json({ error: 'This payment reference is not a wallet top-up' }, { status: 400 });
+      }
+      if (existingTx.user_id && existingTx.user_id !== effectiveUserId) {
+        return NextResponse.json({ error: 'This payment reference belongs to another account' }, { status: 403 });
+      }
+      if (!existingTx.user_id) {
+        return NextResponse.json({ error: 'This payment reference belongs to a guest transaction' }, { status: 403 });
+      }
       const { data: walletData } = await supabaseAdmin
         .from('wallets')
         .select('balance')
@@ -169,8 +178,8 @@ export async function POST(request) {
 
         flwVerifiedTx = flwData.data || {};
         const verifiedAmount = resolveFlutterwavePaidAmount(flwVerifiedTx);
-        const feeAllowance = Math.min(100, Math.max(5, Math.ceil(numericAmount * 0.035)));
-        if (verifiedAmount + feeAllowance < numericAmount) {
+        const walletFeeTolerance = Math.min(5, Math.ceil(numericAmount * 0.035));
+        if (verifiedAmount + walletFeeTolerance < numericAmount) {
           return NextResponse.json({ error: `Verified deposit (₦${verifiedAmount}) does not match (₦${numericAmount})` }, { status: 400 });
         }
 
@@ -180,6 +189,29 @@ export async function POST(request) {
 
         if (flwVerifiedTx.currency && String(flwVerifiedTx.currency).toUpperCase() !== 'NGN') {
           return NextResponse.json({ error: 'Invalid transaction currency' }, { status: 400 });
+        }
+
+        // Strictly isolate registered wallet top-ups from voucher purchases & guest wallet top-ups
+        const verifiedRef = String(flwVerifiedTx.tx_ref || ref || '').trim();
+        const verifiedMetaType = String(flwVerifiedTx.meta?.type || '').toLowerCase();
+        const isRegisteredTopup =
+          verifiedRef.startsWith('FLW_TOPUP_') || verifiedMetaType === 'wallet_topup';
+        if (
+          !isRegisteredTopup ||
+          verifiedRef.startsWith('FLW_GTOPUP_') ||
+          verifiedMetaType === 'voucher_purchase' ||
+          verifiedMetaType === 'guest_wallet_topup'
+        ) {
+          return NextResponse.json({
+            error: 'Only registered wallet top-up payments can credit a user wallet.',
+          }, { status: 400 });
+        }
+
+        const verifiedMetaUserId = flwVerifiedTx.meta?.user_id || flwVerifiedTx.meta?.userId;
+        if (verifiedMetaUserId && verifiedMetaUserId !== effectiveUserId) {
+          return NextResponse.json({
+            error: 'Unauthorized: This payment belongs to another account.',
+          }, { status: 403 });
         }
       } catch (flwErr) {
         console.error('Flutterwave topup verify error:', flwErr);
@@ -229,6 +261,8 @@ export async function POST(request) {
 
       if (rpcErr) {
         console.error('RPC wallet credit error:', rpcErr);
+        // Clean up orphaned transaction row so subsequent retries are not permanently blocked
+        try { await supabaseAdmin.from('transactions').delete().eq('id', insertedTx.id); } catch {}
         return NextResponse.json({ error: 'Failed to update wallet balance' }, { status: 500 });
       }
 
@@ -238,7 +272,7 @@ export async function POST(request) {
         action: 'wallet_topup',
         amount: numericAmount,
         userId: effectiveUserId,
-        ref,
+        ref: authoritativeRef,
         status: 'successful',
         balanceAfter: finalBalance,
         details: { transaction_id, provider: 'flutterwave' },
@@ -257,7 +291,7 @@ export async function POST(request) {
       // Realtime Broadcast
       await broadcastWalletUpdate(effectiveUserId, finalBalance, {
         amount: numericAmount,
-        flw_ref: ref,
+        flw_ref: authoritativeRef,
         transaction: insertedTx,
       });
     } else {
@@ -273,7 +307,7 @@ export async function POST(request) {
       success: true,
       amount: numericAmount,
       balance: finalBalance,
-      reference: ref,
+      reference: authoritativeRef,
       message: `₦${numericAmount.toLocaleString()} added to wallet`,
     });
   } catch (error) {

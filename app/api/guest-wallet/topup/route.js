@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { logger } from '@/lib/logger';
 import {
   resolveFlutterwavePaidAmount,
-  getFlutterwaveFeeAllowance,
+  getFlutterwaveWalletFeeTolerance,
   resolveFlutterwaveWalletCredit,
 } from '@/lib/flutterwave-fees.js';
 import { getFlutterwaveSecretKey } from '@/lib/flutterwave-fulfill.js';
@@ -40,14 +40,17 @@ export async function POST(request) {
     if (flwRef) {
       const { data: existingTx } = await supabaseAdmin
         .from('transactions')
-        .select('id, amount, metadata')
+        .select('id, type, amount, metadata')
         .eq('flw_ref', flwRef)
         .maybeSingle();
 
       if (existingTx?.id) {
+        if (existingTx.type && existingTx.type !== 'wallet_topup') {
+          return NextResponse.json({ error: 'This payment reference is not a guest wallet deposit' }, { status: 400 });
+        }
         const txToken = existingTx.metadata?.guest_token;
-        if (txToken && txToken !== guestToken) {
-          return NextResponse.json({ error: 'This deposit reference belongs to another guest wallet' }, { status: 403 });
+        if (!txToken || txToken !== guestToken) {
+          return NextResponse.json({ error: 'This deposit reference belongs to another wallet' }, { status: 403 });
         }
         const { data: walletRow } = await supabaseAdmin
           .from('guest_wallets')
@@ -110,12 +113,27 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Transaction reference mismatch' }, { status: 400 });
     }
 
-    const metaToken = flwTx.meta?.guest_token;
-    if (metaToken && metaToken !== guestToken) {
-      return NextResponse.json({ error: 'Deposit token mismatch' }, { status: 403 });
+    const authoritativeRef = String(flwTx.tx_ref || flwRef || '').trim();
+    const flwMetaType = String(flwTx.meta?.type || '').toLowerCase();
+    const isGuestTopupTx =
+      authoritativeRef.startsWith('FLW_GTOPUP_') || flwMetaType === 'guest_wallet_topup';
+
+    if (
+      !isGuestTopupTx ||
+      flwMetaType === 'voucher_purchase' ||
+      flwMetaType === 'wallet_topup' ||
+      authoritativeRef.startsWith('FLW_TOPUP_')
+    ) {
+      return NextResponse.json({
+        error: 'Only Guest Wallet top-up payments can credit a guest wallet.',
+      }, { status: 400 });
     }
 
-    const authoritativeRef = flwTx.tx_ref || flwRef;
+    const metaToken = String(flwTx.meta?.guest_token || '').trim();
+    if (!metaToken || metaToken !== guestToken) {
+      return NextResponse.json({ error: 'Deposit token mismatch or missing guest wallet token' }, { status: 403 });
+    }
+
     const creditAmount = resolveFlutterwaveWalletCredit(flwTx, requestedAmount);
     const verifiedPaid = resolveFlutterwavePaidAmount(flwTx);
 
@@ -123,7 +141,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid verified deposit amount' }, { status: 400 });
     }
 
-    if (requestedAmount > 0 && verifiedPaid + getFlutterwaveFeeAllowance(requestedAmount) < requestedAmount) {
+    if (requestedAmount > 0 && verifiedPaid + getFlutterwaveWalletFeeTolerance(requestedAmount) < requestedAmount) {
       return NextResponse.json({
         error: `Verified deposit (₦${verifiedPaid}) does not match (₦${requestedAmount})`,
       }, { status: 400 });
@@ -168,6 +186,8 @@ export async function POST(request) {
 
       if (rpcErr) {
         console.error('adjust_guest_wallet_balance RPC error:', rpcErr);
+        // Clean up orphaned transaction row so subsequent retries are not blocked by flw_ref idempotency
+        try { await supabaseAdmin.from('transactions').delete().eq('id', insertedTx.id); } catch {}
         return NextResponse.json({ error: 'Failed to credit guest wallet' }, { status: 500 });
       }
       finalBalance = Number(newBal);

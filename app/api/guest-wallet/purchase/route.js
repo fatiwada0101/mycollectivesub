@@ -78,6 +78,43 @@ export async function POST(request) {
     const effectivePlanName = authoritativePlan.name;
     const effectiveDuration = authoritativePlan.duration || duration || '24h';
 
+    // 1b. Rapid double-click idempotency guard (15-second window)
+    try {
+      const windowStart = new Date(Date.now() - 15000).toISOString();
+      const txQuery = supabaseAdmin
+        .from('transactions')
+        .select('id, amount, metadata, created_at');
+      if (typeof txQuery?.is === 'function' && typeof txQuery?.contains === 'function' && typeof txQuery?.gte === 'function') {
+        const { data: recentTx } = await txQuery
+          .is('user_id', null)
+          .eq('type', 'voucher_purchase')
+          .eq('payment_method', 'guest_wallet')
+          .contains('metadata', { guest_token: guestToken, plan_name: effectivePlanName })
+          .gte('created_at', windowStart)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (recentTx?.metadata?.voucher_code) {
+          const { data: wRow } = await supabaseAdmin
+            .from('guest_wallets')
+            .select('balance')
+            .eq('guest_token', guestToken)
+            .maybeSingle();
+          return NextResponse.json({
+            success: true,
+            voucher_code: recentTx.metadata.voucher_code,
+            plan: effectivePlanName,
+            price: Number(recentTx.amount || numericPrice),
+            duration: recentTx.metadata.duration || effectiveDuration,
+            new_balance: Number(wRow?.balance || 0),
+            is_fallback: false,
+            idempotent: true,
+          });
+        }
+      }
+    } catch {}
+
     // 2. Fetch hotspot settings
     let hotspotSettings = { sharing_enabled: false, expiry_mode: 'elapsed' };
     try {
@@ -180,8 +217,9 @@ export async function POST(request) {
       }
     }
 
+    let insertedTxId = null;
     try {
-      const { data: tx } = await supabaseAdmin
+      const { data: tx, error: txErr } = await supabaseAdmin
         .from('transactions')
         .insert({
           user_id: null,
@@ -200,12 +238,15 @@ export async function POST(request) {
         .select('id')
         .single();
 
-      await supabaseAdmin.from('vouchers').insert({
+      if (txErr) throw txErr;
+      insertedTxId = tx?.id || null;
+
+      const { error: voucherErr } = await supabaseAdmin.from('vouchers').insert({
         user_id: null,
         voucher_code: code,
         profile_name: effectivePlanName,
         price: numericPrice,
-        transaction_id: tx?.id || null,
+        transaction_id: insertedTxId,
         tx_ref: guestTxRef,
         is_used: false,
         auto_renew: false,
@@ -214,6 +255,8 @@ export async function POST(request) {
         activated_at: null,
         expires_at: null,
       });
+
+      if (voucherErr) throw voucherErr;
 
       logger.financial({
         action: 'guest_wallet_voucher_purchase',
@@ -225,6 +268,9 @@ export async function POST(request) {
         details: { voucher_code: code, plan: effectivePlanName, is_fallback: isFallback },
       }, logger.getCorrelationId(request));
     } catch (dbErr) {
+      if (insertedTxId) {
+        try { await supabaseAdmin.from('transactions').delete().eq('id', insertedTxId); } catch {}
+      }
       await refundGuestWallet();
       return NextResponse.json({
         error: 'Failed to save voucher record. Your guest wallet has been refunded.',

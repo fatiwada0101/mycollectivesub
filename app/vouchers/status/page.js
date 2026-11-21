@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
 import { supabase } from '../../../lib/supabase';
 import { createPaymentHeaders } from '../../../lib/payment-client.js';
-import { saveGuestVoucher, getGuestVouchers } from '../../../lib/guest-vouchers.js';
+import { saveGuestVoucher, getGuestVouchers, removePendingOrder } from '../../../lib/guest-vouchers.js';
 import BottomNav from '../../components/BottomNav';
 import ReceiptModal from '../../components/ReceiptModal';
 import DataUsageGauge from '../../components/DataUsageGauge';
@@ -132,6 +132,7 @@ function VoucherStatusContent() {
 
         if (redirectTxRef) {
           try { sessionStorage.removeItem(`flw-order-${redirectTxRef}`); } catch {}
+          removePendingOrder(redirectTxRef);
         }
 
         saveGuestVoucher({

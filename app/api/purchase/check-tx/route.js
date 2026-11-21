@@ -7,6 +7,9 @@ async function checkAndFulfillByTxRef(txRef) {
   if (!cleanRef || cleanRef.length > 200) {
     return { status: 'invalid', error: 'Invalid transaction reference' };
   }
+  if (cleanRef.startsWith('FLW_TOPUP_') || cleanRef.startsWith('FLW_GTOPUP_')) {
+    return { status: 'invalid', error: 'Wallet top-up references cannot be claimed as direct voucher purchases.' };
+  }
 
   // 1. Check if voucher was already provisioned (by webhook or callback)
   const { data: existingVoucher } = await supabaseAdmin
@@ -118,6 +121,9 @@ export async function POST(request) {
 
     if (body.tx_ref) {
       const result = await checkAndFulfillByTxRef(body.tx_ref);
+      if (result.status === 'invalid') {
+        return NextResponse.json({ status: 'error', error: result.error }, { status: 400 });
+      }
       if (result.status === 'error') {
         return NextResponse.json({ status: 'error', error: result.error }, { status: result.httpStatus || 400 });
       }
@@ -127,6 +133,14 @@ export async function POST(request) {
     const email = String(body.email || '').trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Please enter a valid payment email or reference' }, { status: 400 });
+    }
+    if (
+      /^guest_[a-f0-9]+@mycollectivesub\.si$/i.test(email) ||
+      email === 'customer@mycollectivesub.com'
+    ) {
+      return NextResponse.json({
+        error: 'Please enter the personal email address you used at checkout, or enter your FLW_ transaction reference.',
+      }, { status: 400 });
     }
 
     const vouchers = [];
@@ -150,7 +164,14 @@ export async function POST(request) {
           const txs = Array.isArray(flwJson?.data) ? flwJson.data : [];
           for (const tx of txs.slice(0, 8)) {
             const ref = String(tx?.tx_ref || '').trim();
-            if (!ref || ref.startsWith('FLW_TOPUP_') || tx?.meta?.type === 'wallet_topup') continue;
+            const txType = String(tx?.meta?.type || '').toLowerCase();
+            if (
+              !ref ||
+              ref.startsWith('FLW_TOPUP_') ||
+              ref.startsWith('FLW_GTOPUP_') ||
+              txType === 'wallet_topup' ||
+              txType === 'guest_wallet_topup'
+            ) continue;
             if (tx.created_at && new Date(tx.created_at).getTime() < Date.now() - 24 * 60 * 60 * 1000) continue;
             if (seenRefs.has(ref)) continue;
             seenRefs.add(ref);

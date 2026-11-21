@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from './context/AuthContext';
 import { useBranding } from './context/BrandingContext';
 import { supabase } from '../lib/supabase';
+import { createPaymentHeaders } from '../lib/payment-client.js';
 import {
   enableGuestSession,
   getGuestVouchers,
@@ -110,7 +111,7 @@ export default function HomePage() {
         try {
           const checkRes = await fetch('/api/guest-wallet/topup', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: createPaymentHeaders(),
             body: JSON.stringify({
               guest_token: token,
               flw_ref: p.tx_ref,

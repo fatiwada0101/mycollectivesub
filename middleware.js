@@ -15,6 +15,7 @@ const RATE_LIMITS = [
   { pattern: '/api/super-admin/auth',    max: 5,   window: 60_000, prefix: 'auth'      },
   { pattern: '/api/purchase',            max: 10,  window: 60_000, prefix: 'purchase'  },
   { pattern: '/api/wallet',              max: 10,  window: 60_000, prefix: 'wallet'    },
+  { pattern: '/api/guest-wallet',        max: 20,  window: 60_000, prefix: 'gwallet'   },
   { pattern: '/api/webhook',             max: 60,  window: 60_000, prefix: 'webhook'   },
   { pattern: '/api/mikrotik/heartbeat',  max: 60,  window: 60_000, prefix: 'heartbeat' },
   { pattern: '/api/mikrotik/polling',    max: 60,  window: 60_000, prefix: 'polling'   },

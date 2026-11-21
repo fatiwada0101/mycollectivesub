@@ -213,6 +213,17 @@ export async function POST(request) {
     const flwTx = verifiedFlw.data || {};
     const flwMeta = flwTx.meta || {};
     const effectiveTxRef = tx_ref || flwTx.tx_ref || null;
+    const flwMetaType = String(flwMeta.type || '').toLowerCase();
+    if (
+      effectiveTxRef?.startsWith('FLW_TOPUP_') ||
+      effectiveTxRef?.startsWith('FLW_GTOPUP_') ||
+      flwMetaType === 'wallet_topup' ||
+      flwMetaType === 'guest_wallet_topup'
+    ) {
+      return NextResponse.json({
+        error: 'Wallet top-up payments cannot be redeemed as direct voucher purchases.',
+      }, { status: 400 });
+    }
     if (!tx_ref && effectiveTxRef) {
       try {
         const { data: existingByFlwRef } = await supabaseAdmin
@@ -305,8 +316,79 @@ export async function POST(request) {
       '3d': '3d', '7d': '7d', '30d': '30d',
     };
 
-    // Build rate limit string
+    // Build rate limit string and uptime
     const rateLimit = `${planUploadSpeed}/${planDownloadSpeed}`;
+    const voucherLimitUptime = uptimeMap[effectiveDuration] || effectiveDuration || '1d';
+
+    // 4b. Atomic cross-route race guard: reserve flw_ref in transactions BEFORE provisioning MikroTik
+    // so concurrent webhook/flutterwave + verify-payment callbacks cannot double-provision a voucher.
+    let reservedTxId = null;
+    const releaseReservedTx = async () => {
+      if (reservedTxId) {
+        try { await supabaseAdmin.from('transactions').delete().eq('id', reservedTxId); } catch {}
+        reservedTxId = null;
+      }
+    };
+
+    if (effectiveTxRef) {
+      const txTable = supabaseAdmin.from('transactions');
+      if (typeof txTable?.upsert === 'function') {
+        const { data: reservedTx, error: txUpsertErr } = await txTable
+          .upsert({
+            user_id: effectiveUserId,
+            type: 'voucher_purchase',
+            amount: authoritativePrice,
+            status: 'successful',
+            payment_method: 'card',
+            flw_ref: effectiveTxRef,
+            metadata: {
+              plan_id: planData.id || resolvedPlanId || null,
+              plan_name: effectivePlanName,
+              duration: effectiveDuration || null,
+              gateway: 'flutterwave',
+              customer_email: (effectiveEmail || '').trim().toLowerCase() || null,
+              customer_phone: effectivePhone || null,
+              transaction_id: flwTx.id || transaction_id || null,
+              charged_amount: Number(flwTx.charged_amount || paidAmount || authoritativePrice),
+              app_fee: Number(flwTx.app_fee || 0),
+              amount_settled: Number(flwTx.amount_settled || authoritativePrice),
+            },
+          }, { onConflict: 'flw_ref', ignoreDuplicates: true })
+          .select('id')
+          .maybeSingle();
+
+        if (txUpsertErr) {
+          console.error('verify-payment transaction reserve error:', txUpsertErr);
+          return NextResponse.json({ error: 'Failed to reserve transaction record' }, { status: 500 });
+        }
+
+        if (!reservedTx?.id) {
+          for (let i = 0; i < 6; i++) {
+            const { data: raceVoucher } = await supabaseAdmin
+              .from('vouchers')
+              .select('voucher_code, profile_name, price')
+              .eq('tx_ref', effectiveTxRef)
+              .maybeSingle();
+            if (raceVoucher?.voucher_code) {
+              return NextResponse.json({
+                success: true,
+                voucher_code: raceVoucher.voucher_code,
+                plan: raceVoucher.profile_name,
+                price: raceVoucher.price,
+                is_fallback: false,
+                idempotent: true,
+              });
+            }
+            await new Promise((r) => setTimeout(r, 350));
+          }
+          return NextResponse.json({
+            error: 'Payment fulfillment is already in progress. Please retry in a few seconds.',
+          }, { status: 409 });
+        }
+
+        reservedTxId = reservedTx.id;
+      }
+    }
 
     // 5. Provision voucher — MikroTik router API first, fallback voucher pool when API fails or router is unconfigured
     let routerResult = null;
@@ -319,7 +401,7 @@ export async function POST(request) {
           code,
           password: code,
           profile: effectivePlanName,
-          limitUptime: uptimeMap[effectiveDuration] || effectiveDuration || '1d',
+          limitUptime: voucherLimitUptime,
           comment: `Online Pay: ${effectiveEmail || effectivePhone || 'Guest'} - ${effectivePlanName} - ₦${authoritativePrice} [Ref: ${effectiveTxRef}]`,
           shared_users: planDevices,
           rate_limit: rateLimit,
@@ -343,7 +425,8 @@ export async function POST(request) {
           isFallback = true;
         } else {
           // Payment was taken, but router provisioning had an error and no backup vouchers
-          // We do NOT insert a voucher row here — the user must contact support with the tx_ref
+          // Release reserved transaction so a retry can succeed once router is back online
+          await releaseReservedTx();
           return NextResponse.json({
             success: false,
             error: `Payment was verified (Ref: ${effectiveTxRef}), but the router API failed ("${routerErr.message}") and no fallback vouchers are available in stock for "${effectivePlanName}". Please contact support with Ref: ${effectiveTxRef}.`,
@@ -368,7 +451,8 @@ export async function POST(request) {
         code = claimed.voucher_code;
         isFallback = true;
       } else {
-        // Router not configured + no fallback vouchers — return error without inserting
+        // Router not configured + no fallback vouchers — release lock & return error without inserting
+        await releaseReservedTx();
         return NextResponse.json({
           success: false,
           error: `Payment was verified (Ref: ${effectiveTxRef}), but the Wi-Fi router is not yet configured in settings and no fallback vouchers are in reserve for "${effectivePlanName}". Please contact support with Ref: ${effectiveTxRef}.`,
@@ -377,43 +461,53 @@ export async function POST(request) {
       }
     }
 
-    // 6. Record transaction for card payment (so it shows in wallet history/analytics)
-    let txId = null;
-    try {
-      const { data: tx } = await supabaseAdmin
-        .from('transactions')
-        .insert({
-          user_id: effectiveUserId,
-          type: 'voucher_purchase',
-          amount: authoritativePrice,
-          status: 'successful',
-          payment_method: 'card',
-          flw_ref: effectiveTxRef,
-          metadata: {
-            plan_id: planData.id || resolvedPlanId || null,
-            plan_name: effectivePlanName,
-            voucher_code: code,
-            duration: effectiveDuration || null,
-            gateway: 'flutterwave',
-            customer_email: (effectiveEmail || '').trim().toLowerCase() || null,
-            customer_phone: effectivePhone || null,
-            charged_amount: Number(flwTx.charged_amount || paidAmount || authoritativePrice),
-            app_fee: Number(flwTx.app_fee || 0),
-            amount_settled: Number(flwTx.amount_settled || authoritativePrice),
-          },
-        })
-        .select('id')
-        .single();
-      txId = tx?.id || null;
-    } catch (e) {
-      console.warn('Transaction record insert failed (non-fatal):', e.message);
+    // 6. Record or update transaction for card payment (so it shows in wallet history/analytics)
+    let txId = reservedTxId;
+    const txMetadata = {
+      plan_id: planData.id || resolvedPlanId || null,
+      plan_name: effectivePlanName,
+      voucher_code: code,
+      duration: effectiveDuration || null,
+      gateway: 'flutterwave',
+      customer_email: (effectiveEmail || '').trim().toLowerCase() || null,
+      customer_phone: effectivePhone || null,
+      transaction_id: flwTx.id || transaction_id || null,
+      charged_amount: Number(flwTx.charged_amount || paidAmount || authoritativePrice),
+      app_fee: Number(flwTx.app_fee || 0),
+      amount_settled: Number(flwTx.amount_settled || authoritativePrice),
+    };
+    if (reservedTxId) {
+      try {
+        await supabaseAdmin
+          .from('transactions')
+          .update({ metadata: txMetadata })
+          .eq('id', reservedTxId);
+      } catch (e) {
+        console.warn('Transaction metadata update failed (non-fatal):', e.message);
+      }
+    } else {
+      try {
+        const { data: tx } = await supabaseAdmin
+          .from('transactions')
+          .insert({
+            user_id: effectiveUserId,
+            type: 'voucher_purchase',
+            amount: authoritativePrice,
+            status: 'successful',
+            payment_method: 'card',
+            flw_ref: effectiveTxRef,
+            metadata: txMetadata,
+          })
+          .select('id')
+          .single();
+        txId = tx?.id || null;
+      } catch (e) {
+        console.warn('Transaction record insert failed (non-fatal):', e.message);
+      }
     }
 
-    // Strict first-login wall-clock expiry: deadline is locked on the router at first connection
-    const voucherLimitUptime = uptimeMap[effectiveDuration] || effectiveDuration || '1d';
-
     // 7. Record successful voucher in Supabase (include tx_ref for idempotency)
-    await supabaseAdmin
+    const { error: voucherInsertErr } = await supabaseAdmin
       .from('vouchers')
       .insert({
         user_id: effectiveUserId,
@@ -429,6 +523,13 @@ export async function POST(request) {
         activated_at: null,
         expires_at: null,
       });
+
+    if (voucherInsertErr) {
+      await releaseReservedTx();
+      return NextResponse.json({
+        error: 'Payment verified, but saving voucher record failed. Please retry or contact support.',
+      }, { status: 500 });
+    }
 
     logger.financial({
       action: 'card_voucher_purchase',

@@ -112,6 +112,8 @@ function WalletContent() {
   const [activeSegment, setActiveSegment] = useState('deposits'); // 'deposits' | 'vouchers'
   const [amountVal, setAmountVal] = useState('500');
   const [guestEmail, setGuestEmail] = useState('');
+  const guestEmailRef = useRef('');
+  guestEmailRef.current = guestEmail;
   const [guestBalance, setGuestBalance] = useState(0);
   const [pendingGuestTopups, setPendingGuestTopups] = useState([]);
   const [toast, setToast] = useState('');
@@ -219,7 +221,7 @@ function WalletContent() {
               guest_token: token,
               flw_ref: p.tx_ref,
               amount: p.amount,
-              email: p.email || guestEmail,
+              email: p.email || guestEmailRef.current,
               check_only: true,
             }),
           });
@@ -245,11 +247,11 @@ function WalletContent() {
         const bal = Number(data.balance || 0);
         setGuestBalance(bal);
         setCachedGuestBalance(bal);
-        if (data.email && !guestEmail) setGuestEmail(data.email);
+        if (data.email && !guestEmailRef.current) setGuestEmail(data.email);
         computeTxSummary(data.transactions || []);
       }
     } catch {}
-  }, [user, guestEmail, computeTxSummary]);
+  }, [user, computeTxSummary]);
 
   // Fetch real transaction data for charts and history
   const fetchTransactions = useCallback(async () => {

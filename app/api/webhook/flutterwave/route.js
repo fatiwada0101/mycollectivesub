@@ -49,10 +49,10 @@ function resolveFlutterwavePaidAmount(flwTx) {
   return grossPaid;
 }
 
-function getFlutterwaveFeeAllowance(targetAmount) {
+function getFlutterwaveWalletFeeTolerance(targetAmount) {
   const target = Number(targetAmount || 0);
   if (!Number.isFinite(target) || target <= 0) return 0;
-  return Math.min(100, Math.max(5, Math.ceil(target * 0.035)));
+  return Math.min(5, Math.ceil(target * 0.035));
 }
 
 function resolveFlutterwaveWalletCredit(flwTx) {
@@ -69,7 +69,7 @@ function resolveFlutterwaveWalletCredit(flwTx) {
   if (
     Number.isFinite(metaIntended) &&
     metaIntended > 0 &&
-    grossPaid + getFlutterwaveFeeAllowance(metaIntended) >= metaIntended
+    grossPaid + getFlutterwaveWalletFeeTolerance(metaIntended) >= metaIntended
   ) {
     return Math.round(metaIntended * 100) / 100;
   }
@@ -85,8 +85,8 @@ function resolveFlutterwaveWalletCredit(flwTx) {
 
   const standardTiers = [100, 200, 250, 300, 500, 1000, 1500, 2000, 2500, 3000, 5000, 10000];
   for (const tier of standardTiers) {
-    const allowance = getFlutterwaveFeeAllowance(tier);
-    if (grossPaid < tier && grossPaid + allowance >= tier) {
+    const tolerance = getFlutterwaveWalletFeeTolerance(tier);
+    if (grossPaid < tier && grossPaid + tolerance >= tier) {
       return tier;
     }
   }
@@ -131,14 +131,22 @@ export async function POST(request) {
       console.warn('Could not read webhook secret from settings:', e.message);
     }
 
-    // 2. Verify hash if secret is configured
+    // 2. Fail-closed authentication: require webhook_secret and/or Flutterwave API verification
+    if (!webhookSecret && !secretKey) {
+      console.error('Flutterwave webhook rejected: neither webhook_secret nor secret_key is configured');
+      return NextResponse.json({ status: 'error', message: 'Webhook verification not configured' }, { status: 503 });
+    }
     if (webhookSecret && hash !== webhookSecret) {
       console.warn('Webhook hash mismatch — rejecting unauthorized delivery');
       return NextResponse.json({ status: 'error', message: 'Invalid hash' }, { status: 401 });
     }
 
-    // 3. Extract transaction data (and verify against Flutterwave API when transaction ID & secretKey exist)
+    // 3. Extract transaction data and authoritatively verify against Flutterwave API (fail-closed!)
     const rawEventData = body.data || body;
+    if (!webhookSecret && !rawEventData?.id) {
+      return NextResponse.json({ status: 'error', message: 'Unverifiable webhook payload' }, { status: 401 });
+    }
+
     let eventData = rawEventData;
     if (secretKey && rawEventData?.id && typeof fetch === 'function') {
       try {
@@ -146,18 +154,23 @@ export async function POST(request) {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${secretKey}` },
         });
-        if (verifyRes.ok) {
-          const verifyJson = await verifyRes.json();
-          if (verifyJson?.status === 'success' && verifyJson?.data) {
-            eventData = {
-              ...rawEventData,
-              ...verifyJson.data,
-              meta: { ...(rawEventData.meta || {}), ...(verifyJson.data.meta || {}) },
-            };
-          }
+        if (!verifyRes.ok) {
+          console.warn(`Webhook Flutterwave API verify failed with HTTP ${verifyRes.status}`);
+          return NextResponse.json({ status: 'error', message: 'Failed to verify transaction with Flutterwave' }, { status: 400 });
         }
+        const verifyJson = await verifyRes.json();
+        if (verifyJson?.status !== 'success' || !verifyJson?.data) {
+          console.warn('Webhook Flutterwave API verify rejected transaction');
+          return NextResponse.json({ status: 'error', message: 'Transaction could not be verified with Flutterwave' }, { status: 400 });
+        }
+        eventData = {
+          ...rawEventData,
+          ...verifyJson.data,
+          meta: { ...(rawEventData.meta || {}), ...(verifyJson.data.meta || {}) },
+        };
       } catch (verifyErr) {
-        console.warn('Webhook Flutterwave API verify fallback:', verifyErr.message);
+        console.error('Webhook Flutterwave API verify network error:', verifyErr.message);
+        return NextResponse.json({ status: 'error', message: 'Unable to verify transaction with Flutterwave' }, { status: 502 });
       }
     }
 
@@ -227,6 +240,7 @@ export async function POST(request) {
         });
         if (guestRpcErr) {
           console.error('Webhook adjust_guest_wallet_balance error:', guestRpcErr);
+          try { await supabaseAdmin.from('transactions').delete().eq('id', insertedGuestTx.id); } catch {}
           return NextResponse.json({ status: 'error', message: 'Failed to credit guest wallet' }, { status: 500 });
         }
         guestBalance = Number(newGuestBal);
@@ -252,6 +266,15 @@ export async function POST(request) {
     const isWalletTopup = txRef.startsWith('FLW_TOPUP_') || metaType === 'wallet_topup';
 
     if (!isWalletTopup) {
+      // Never route malformed/tokenless guest wallet top-ups into direct voucher fulfillment
+      if (txRef.startsWith('FLW_GTOPUP_') || metaType === 'guest_wallet_topup') {
+        return NextResponse.json({
+          status: 'ignored',
+          reason: 'missing valid guest_token',
+          tx_ref: txRef,
+        });
+      }
+
       // Fulfill direct guest / logged-in voucher purchases automatically on the server!
       // Critical for mobile bank transfers (OPay, PalmPay, Moniepoint) where switching apps
       // closes or reloads the captive portal before the browser JS callback can fire.
@@ -368,6 +391,7 @@ export async function POST(request) {
 
       if (rpcErr) {
         console.error('Webhook RPC adjust_wallet_balance error:', rpcErr);
+        try { await supabaseAdmin.from('transactions').delete().eq('id', insertedTx.id); } catch {}
         return NextResponse.json({ status: 'error', message: 'Failed to credit wallet' }, { status: 500 });
       }
 

@@ -13,6 +13,8 @@ async function loadModule(file, dependencies, exports) {
     .replace(/^export\s*\{[\s\S]*?\};\s*$/gm, '')
     .replace(/^export /gm, '');
   return vm.runInNewContext(`(function(){${source}\nreturn {${exports.join(',')}};})()`, {
+    URL,
+    AbortSignal,
     ...dependencies,
     z,
     process: { env: {} },
@@ -790,6 +792,7 @@ test('Guest Wallet: localStorage token + Flutterwave webhook & topup credit full
   const feeHelper = await loadModule('lib/flutterwave-fees.js', {}, [
     'resolveFlutterwavePaidAmount',
     'getFlutterwaveFeeAllowance',
+    'getFlutterwaveWalletFeeTolerance',
     'resolveFlutterwaveWalletCredit',
   ]);
 
@@ -946,4 +949,382 @@ test('Guest Wallet: localStorage token + Flutterwave webhook & topup credit full
     body: JSON.stringify({ guest_token: gToken, plan_id: 'plan-1hr' }),
   }));
   assert.equal(emptyPurchase.status, 400);
+});
+
+test('Security: cross-purpose Flutterwave payment replay is blocked across verify-payment, check-tx, guest-wallet/topup, and wallet/topup', async () => {
+  const schemas = await loadModule('lib/schemas.js', {}, ['verifyPaymentSchema', 'walletTopupSchema', 'validateBody']);
+  const feeHelper = await loadModule('lib/flutterwave-fees.js', {}, [
+    'resolveFlutterwavePaidAmount',
+    'getFlutterwaveFeeAllowance',
+    'getFlutterwaveWalletFeeTolerance',
+    'resolveFlutterwaveWalletCredit',
+  ]);
+  const userA = '00000000-0000-4000-8000-0000000000aa';
+  const userB = '00000000-0000-4000-8000-0000000000bb';
+  const guestTokenA = 'gw_' + 'a'.repeat(48);
+  const guestTokenB = 'gw_' + 'b'.repeat(48);
+  let routerCalls = 0;
+  let flwPayload = null;
+  const existingTxs = [
+    { id: 'tx-user-topup', flw_ref: 'FLW_TOPUP_EXISTING', type: 'wallet_topup', user_id: userA, amount: 500, metadata: {} },
+  ];
+
+  const baseFrom = (table) => {
+    const filters = [];
+    const q = {
+      select() { return q; },
+      eq(k, v) { filters.push([k, v]); return q; },
+      delete() { return { eq: async () => ({ error: null }) }; },
+      async maybeSingle() {
+        if (table === 'transactions') {
+          const ref = filters.find(([k]) => k === 'flw_ref')?.[1];
+          return { data: existingTxs.find(t => t.flw_ref === ref) || null };
+        }
+        if (table === 'app_settings') {
+          const key = filters.find(([k]) => k === 'key')?.[1];
+          if (key === 'payment_gateway') return { data: { value: { active: 'flutterwave' } } };
+          if (key === 'flutterwave') return { data: { value: { secret_key: 'FLWSECK-test', webhook_secret: 'wh-sec' } } };
+        }
+        if (table === 'plans') {
+          return { data: { id: 'plan-1hr', name: '3 Hour Fast Pass', price: 100, duration: '3h' } };
+        }
+        return { data: null };
+      },
+    };
+    return q;
+  };
+
+  // 1. verify-payment must reject FLW_TOPUP_ and FLW_GTOPUP_ with 400 and never provision router
+  const verifyRoute = await loadModule('app/api/purchase/verify-payment/route.js', {
+    ...schemas,
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: { from: baseFrom, rpc: async () => ({ data: [] }) },
+    fulfillMonnifyPayment: async () => ({}),
+    validateUserAuth: async () => null,
+    isMikroTikConfigured: async () => true,
+    calculateExpiresAt: () => new Date().toISOString(),
+    createOrQueueHotspotUser: async () => { routerCalls++; return { routerId: '*1' }; },
+    generateUniqueCode: async () => '11223',
+    logger: { financial() {}, getCorrelationId: () => 'cid-sec1' },
+    sendVoucherSms: async () => {},
+    fetch: async () => Response.json({ status: 'success', data: flwPayload }),
+  }, ['POST']);
+
+  for (const replayPayload of [
+    { status: 'successful', amount: 100, currency: 'NGN', tx_ref: 'FLW_TOPUP_REPLAY_1', meta: { type: 'wallet_topup', user_id: userA } },
+    { status: 'successful', amount: 100, currency: 'NGN', tx_ref: 'FLW_GTOPUP_REPLAY_1', meta: { type: 'guest_wallet_topup', guest_token: guestTokenA } },
+  ]) {
+    flwPayload = replayPayload;
+    const res = await verifyRoute.POST(new Request('https://test.local/api/purchase/verify-payment', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ transaction_id: '5001', tx_ref: replayPayload.tx_ref, plan_id: 'plan-1hr' }),
+    }));
+    assert.equal(res.status, 400, `verify-payment must reject ${replayPayload.tx_ref}`);
+  }
+  assert.equal(routerCalls, 0, 'Router must never be called for replayed wallet deposit refs');
+
+  // 2. check-tx must reject FLW_TOPUP_, FLW_GTOPUP_, and placeholder guest_*@mycollectivesub.si emails
+  const checkTxRoute = await loadModule('app/api/purchase/check-tx/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: { from: baseFrom },
+    fulfillVerifiedFlutterwaveVoucher: async () => { throw new Error('must not be called'); },
+    getFlutterwaveSecretKey: async () => 'FLWSECK-test',
+  }, ['GET', 'POST']);
+
+  assert.equal((await checkTxRoute.GET(new Request('https://test.local/api/purchase/check-tx?tx_ref=FLW_GTOPUP_99'))).status, 400);
+  assert.equal((await checkTxRoute.GET(new Request('https://test.local/api/purchase/check-tx?tx_ref=FLW_TOPUP_99'))).status, 400);
+  assert.equal((await checkTxRoute.POST(new Request('https://test.local/api/purchase/check-tx', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tx_ref: 'FLW_GTOPUP_99' }),
+  }))).status, 400);
+  assert.equal((await checkTxRoute.POST(new Request('https://test.local/api/purchase/check-tx', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'guest_deadbeef@mycollectivesub.si' }),
+  }))).status, 400);
+
+  // 3. guest-wallet/topup must reject voucher_purchase, missing guest_token, wrong guest_token, and registered user tx_ref
+  const guestTopupRoute = await loadModule('app/api/guest-wallet/topup/route.js', {
+    ...feeHelper,
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: { from: baseFrom, rpc: async () => ({ data: 0, error: null }) },
+    getFlutterwaveSecretKey: async () => 'FLWSECK-test',
+    logger: { financial() {}, getCorrelationId: () => 'cid-sec2' },
+    fetch: async () => Response.json({ status: 'success', data: flwPayload }),
+  }, ['POST']);
+
+  // Existing registered user topup ref submitted to guest wallet -> 403
+  assert.equal((await guestTopupRoute.POST(new Request('https://test.local/api/guest-wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: guestTokenA, flw_ref: 'FLW_TOPUP_EXISTING', amount: 500 }),
+  }))).status, 403);
+
+  // Direct voucher purchase transaction_id replayed into guest wallet -> 400
+  flwPayload = { id: 6001, tx_ref: 'FLW_VOUCHER_123', status: 'successful', currency: 'NGN', amount: 100, meta: { type: 'voucher_purchase', plan_id: 'plan-1hr' } };
+  assert.equal((await guestTopupRoute.POST(new Request('https://test.local/api/guest-wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: guestTokenA, transaction_id: '6001', amount: 100 }),
+  }))).status, 400);
+
+  // Guest topup missing meta.guest_token -> 403
+  flwPayload = { id: 6002, tx_ref: 'FLW_GTOPUP_NOTOKEN', status: 'successful', currency: 'NGN', amount: 100, meta: { type: 'guest_wallet_topup' } };
+  assert.equal((await guestTopupRoute.POST(new Request('https://test.local/api/guest-wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: guestTokenA, flw_ref: 'FLW_GTOPUP_NOTOKEN', transaction_id: '6002', amount: 100 }),
+  }))).status, 403);
+
+  // Guest topup belonging to another guest token -> 403
+  flwPayload = { id: 6003, tx_ref: 'FLW_GTOPUP_OTHER', status: 'successful', currency: 'NGN', amount: 100, meta: { type: 'guest_wallet_topup', guest_token: guestTokenB } };
+  assert.equal((await guestTopupRoute.POST(new Request('https://test.local/api/guest-wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: guestTokenA, flw_ref: 'FLW_GTOPUP_OTHER', transaction_id: '6003', amount: 100 }),
+  }))).status, 403);
+
+  // 4. wallet/topup must reject voucher_purchase, guest_wallet_topup, and another user's meta.user_id
+  const userTopupRoute = await loadModule('app/api/wallet/topup/route.js', {
+    ...schemas,
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: { from: baseFrom, rpc: async () => ({ data: 0, error: null }) },
+    broadcastWalletUpdate: async () => {},
+    fulfillMonnifyPayment: async () => ({}),
+    validateUserAuth: async () => ({ id: userA, email: 'a@example.com' }),
+    userUnauthorizedResponse: msg => Response.json({ error: msg }, { status: 401 }),
+    logger: { financial() {}, getCorrelationId: () => 'cid-sec3' },
+    fetch: async () => Response.json({ status: 'success', data: flwPayload }),
+  }, ['POST']);
+
+  flwPayload = { id: 7001, tx_ref: 'FLW_VOUCHER_777', status: 'successful', currency: 'NGN', amount: 100, meta: { type: 'voucher_purchase', plan_id: 'plan-1hr' } };
+  assert.equal((await userTopupRoute.POST(new Request('https://test.local/api/wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount: 100, user_id: userA, flw_ref: 'FLW_VOUCHER_777', transaction_id: 7001, gateway: 'flutterwave' }),
+  }))).status, 400);
+
+  flwPayload = { id: 7002, tx_ref: 'FLW_GTOPUP_777', status: 'successful', currency: 'NGN', amount: 100, meta: { type: 'guest_wallet_topup', guest_token: guestTokenA } };
+  assert.equal((await userTopupRoute.POST(new Request('https://test.local/api/wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount: 100, user_id: userA, flw_ref: 'FLW_GTOPUP_777', transaction_id: 7002, gateway: 'flutterwave' }),
+  }))).status, 400);
+
+  flwPayload = { id: 7003, tx_ref: 'FLW_TOPUP_USERB', status: 'successful', currency: 'NGN', amount: 100, meta: { type: 'wallet_topup', user_id: userB } };
+  assert.equal((await userTopupRoute.POST(new Request('https://test.local/api/wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount: 100, user_id: userA, flw_ref: 'FLW_TOPUP_USERB', transaction_id: 7003, gateway: 'flutterwave' }),
+  }))).status, 403);
+
+  // Deposit inflation attack: paying ₦1,000 while claiming amount=1035 or meta.intended_amount=1035 MUST be blocked
+  flwPayload = { id: 7004, tx_ref: 'FLW_TOPUP_INFLATE', status: 'successful', currency: 'NGN', amount: 1000, charged_amount: 1000, app_fee: 14, amount_settled: 986, meta: { type: 'wallet_topup', user_id: userA, intended_amount: 1035 } };
+  assert.equal((await userTopupRoute.POST(new Request('https://test.local/api/wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount: 1035, user_id: userA, flw_ref: 'FLW_TOPUP_INFLATE', transaction_id: 7004, gateway: 'flutterwave' }),
+  }))).status, 400);
+  assert.equal(feeHelper.resolveFlutterwaveWalletCredit(flwPayload, 1035), 1000, 'Spoofed meta.intended_amount must never inflate ₦1,000 deposit to ₦1,035');
+});
+
+test('Reliability: concurrent flutterwave-fulfill returns 409 without double-provisioning, RPC failures roll back orphaned tx rows, DB insert errors refund guest wallet, and webhook fails closed', async () => {
+  const feeHelper = await loadModule('lib/flutterwave-fees.js', {}, [
+    'resolveFlutterwavePaidAmount',
+    'getFlutterwaveFeeAllowance',
+    'getFlutterwaveWalletFeeTolerance',
+    'resolveFlutterwaveWalletCredit',
+  ]);
+  const gToken = 'gw_' + 'c'.repeat(48);
+
+  // 1. lib/flutterwave-fulfill.js: when transactions.upsert returns null (already reserved), MUST return 409 and NOT call MikroTik
+  let mikrotikCalls = 0;
+  const fulfillMod = await loadModule('lib/flutterwave-fulfill.js', {
+    ...feeHelper,
+    setTimeout: (fn) => { fn(); return 0; }, // skip 350ms sleep in unit test
+    isMikroTikConfigured: async () => true,
+    createOrQueueHotspotUser: async () => { mikrotikCalls++; return { routerId: '*1' }; },
+    generateUniqueCode: async () => '55667',
+    sendVoucherSms: async () => {},
+    supabaseAdmin: {
+      from(table) {
+        const q = {
+          select() { return q; },
+          eq() { return q; },
+          upsert() { return { select() { return { maybeSingle: async () => ({ data: null, error: null }) }; } }; },
+          async maybeSingle() {
+            if (table === 'plans') return { data: { id: 'plan-1hr', name: '3 Hour Fast Pass', price: 100, duration: '3h' } };
+            if (table === 'transactions') return { data: { id: 'already-reserved-by-other-worker' } };
+            return { data: null };
+          },
+        };
+        return q;
+      },
+    },
+  }, ['fulfillVerifiedFlutterwaveVoucher']);
+
+  const raceRes = await fulfillMod.fulfillVerifiedFlutterwaveVoucher({
+    status: 'successful', currency: 'NGN', amount: 100, tx_ref: 'FLW_RACE_1',
+    meta: { type: 'voucher_purchase', plan_id: 'plan-1hr' },
+  });
+  assert.equal(raceRes.ok, false);
+  assert.equal(raceRes.status, 409, 'Concurrent fulfillment must return 409 instead of falling through');
+  assert.equal(mikrotikCalls, 0, 'MikroTik must NOT be provisioned a second time when lock is held');
+
+  // 2. guest-wallet/topup deletes orphaned transactions row on RPC failure so retry succeeds
+  let txStore = [];
+  let rpcFailOnce = true;
+  let guestBal = 0;
+  const topupRollbackDb = {
+    from(table) {
+      const filters = [];
+      const q = {
+        select() { return q; },
+        eq(k, v) { filters.push([k, v]); return q; },
+        delete() {
+          return {
+            eq: async (k, v) => {
+              if (table === 'transactions') txStore = txStore.filter(r => r[k] !== v);
+              return { error: null };
+            },
+          };
+        },
+        upsert(row) {
+          const exists = txStore.find(t => t.flw_ref === row.flw_ref);
+          const inserted = exists ? null : { id: `tx-${txStore.length + 1}`, ...row };
+          if (inserted) txStore.push(inserted);
+          return { select() { return { maybeSingle: async () => ({ data: inserted, error: null }) }; } };
+        },
+        async maybeSingle() {
+          if (table === 'transactions') {
+            const ref = filters.find(([k]) => k === 'flw_ref')?.[1];
+            return { data: txStore.find(t => t.flw_ref === ref) || null };
+          }
+          if (table === 'guest_wallets') return { data: { balance: guestBal } };
+          return { data: null };
+        },
+      };
+      return q;
+    },
+    async rpc(fn, args) {
+      if (fn === 'adjust_guest_wallet_balance') {
+        if (rpcFailOnce) {
+          rpcFailOnce = false;
+          return { data: null, error: { message: 'Temporary DB timeout' } };
+        }
+        guestBal += Number(args.p_amount);
+        return { data: guestBal, error: null };
+      }
+      return { data: null, error: null };
+    },
+  };
+
+  const gwTopupMod = await loadModule('app/api/guest-wallet/topup/route.js', {
+    ...feeHelper,
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: topupRollbackDb,
+    getFlutterwaveSecretKey: async () => 'FLWSECK-test',
+    logger: { financial() {}, getCorrelationId: () => 'cid-rb' },
+    fetch: async () => Response.json({
+      status: 'success',
+      data: { id: 9901, tx_ref: 'FLW_GTOPUP_ROLLBACK', status: 'successful', currency: 'NGN', amount: 100, meta: { type: 'guest_wallet_topup', guest_token: gToken } },
+    }),
+  }, ['POST']);
+
+  const firstAttempt = await gwTopupMod.POST(new Request('https://test.local/api/guest-wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: gToken, flw_ref: 'FLW_GTOPUP_ROLLBACK', transaction_id: '9901', amount: 100 }),
+  }));
+  assert.equal(firstAttempt.status, 500);
+  assert.equal(txStore.length, 0, 'Orphaned transaction row must be deleted when balance RPC fails');
+
+  const retryAttempt = await gwTopupMod.POST(new Request('https://test.local/api/guest-wallet/topup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: gToken, flw_ref: 'FLW_GTOPUP_ROLLBACK', transaction_id: '9901', amount: 100 }),
+  }));
+  assert.equal(retryAttempt.status, 200);
+  assert.equal(guestBal, 100, 'Retry after rollback must credit full ₦100');
+
+  // 3. guest-wallet/purchase refunds balance when Supabase vouchers.insert returns { error } (without throwing!)
+  let deletedTxIds = [];
+  const purchaseMod = await loadModule('app/api/guest-wallet/purchase/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    isMikroTikConfigured: async () => true,
+    createOrQueueHotspotUser: async opts => ({ routerId: '*8', profile: opts.profile }),
+    generateUniqueCode: async () => '44556',
+    logger: { financial() {}, getCorrelationId: () => 'cid-refund' },
+    supabaseAdmin: {
+      from(table) {
+        const q = {
+          select() { return q; },
+          eq() { return q; },
+          delete() { return { eq: async (_k, v) => { deletedTxIds.push(v); return { error: null }; } }; },
+          insert() {
+            if (table === 'transactions') {
+              return { select() { return { single: async () => ({ data: { id: 'tx-orphaned-1' }, error: null }) }; } };
+            }
+            if (table === 'vouchers') {
+              return Promise.resolve({ data: null, error: { message: 'vouchers insert failure' } });
+            }
+            return Promise.resolve({ data: null, error: null });
+          },
+          async maybeSingle() {
+            if (table === 'plans') return { data: { id: 'plan-1hr', name: '3 Hour Fast Pass', price: 100, duration: '3h' } };
+            return { data: null };
+          },
+        };
+        return q;
+      },
+      async rpc(fn, args) {
+        if (fn === 'adjust_guest_wallet_balance') {
+          if (args.p_operation === 'deduct') { guestBal -= Number(args.p_amount); return { data: guestBal, error: null }; }
+          if (args.p_operation === 'add') { guestBal += Number(args.p_amount); return { data: guestBal, error: null }; }
+        }
+        return { data: null, error: null };
+      },
+    },
+  }, ['POST']);
+
+  const dbFailPurchase = await purchaseMod.POST(new Request('https://test.local/api/guest-wallet/purchase', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: gToken, plan_id: 'plan-1hr' }),
+  }));
+  assert.equal(dbFailPurchase.status, 500);
+  assert.equal(guestBal, 100, 'Guest wallet must be refunded when vouchers.insert returns { error }');
+  assert.deepEqual(deletedTxIds, ['tx-orphaned-1'], 'Orphaned purchase transaction must be cleaned up on voucher insert failure');
+
+  // 4. Webhook fails closed when Flutterwave /verify rejects transaction, and rejects unconfigured auth
+  let flwSettingVal = { secret_key: '', webhook_secret: '' };
+  let verifyStatus = 400;
+  const webhookMod = await loadModule('app/api/webhook/flutterwave/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: {
+      from() {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          maybeSingle: async () => ({ data: { value: flwSettingVal } }),
+        };
+      },
+    },
+    broadcastWalletUpdate: async () => {},
+    rateLimitWebhook: () => null,
+    fulfillVerifiedFlutterwaveVoucher: async () => { throw new Error('must not be called'); },
+    fetch: async () => new Response(JSON.stringify({ status: 'error', message: 'Invalid tx' }), { status: verifyStatus }),
+  }, ['POST']);
+
+  const unconfiguredRes = await webhookMod.POST(new Request('https://test.local/api/webhook/flutterwave', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ data: { id: 123, tx_ref: 'FLW_TOPUP_FAKE', status: 'successful', amount: 1000 } }),
+  }));
+  assert.equal(unconfiguredRes.status, 503, 'Webhook must fail closed when neither secret is configured');
+
+  flwSettingVal = { secret_key: 'FLWSECK-test', webhook_secret: 'wh-sec' };
+  const verifyFailRes = await webhookMod.POST(new Request('https://test.local/api/webhook/flutterwave', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'verif-hash': 'wh-sec' },
+    body: JSON.stringify({ data: { id: 123, tx_ref: 'FLW_TOPUP_FAKE', status: 'successful', amount: 1000 } }),
+  }));
+  assert.equal(verifyFailRes.status, 400, 'Webhook must fail closed when Flutterwave API verification returns non-OK');
+
+  // 5. Frontend & middleware structural regression checks
+  const checkoutSrc = await read('app/components/CheckoutModal.js');
+  assert.equal(checkoutSrc.includes('[isOpen, plan, user, hasSufficientWallet]'), false, 'CheckoutModal reset effect must not depend on hasSufficientWallet');
+  const walletSrc = await read('app/wallet/page.js');
+  assert.equal(walletSrc.includes('[user, guestEmail, computeTxSummary]'), false, 'fetchGuestWalletData must not re-fire on every guestEmail keystroke');
+  const homeSrc = await read('app/page.js');
+  assert.ok(homeSrc.includes('createPaymentHeaders()'), 'HomePage guest wallet sync must send CSRF headers');
+  const statusSrc = await read('app/vouchers/status/page.js');
+  assert.ok(statusSrc.includes('removePendingOrder(redirectTxRef)'), 'Status redirect handler must clear localStorage pending order');
+  const mwSrc = await read('middleware.js');
+  assert.ok(mwSrc.includes("'/api/guest-wallet'"), 'Middleware must rate-limit /api/guest-wallet');
 });

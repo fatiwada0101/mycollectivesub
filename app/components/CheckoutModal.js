@@ -152,6 +152,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
   const [activeGateway, setActiveGateway] = useState('flutterwave');
   // Mutex ref — prevents double-click race condition on pay buttons
   const processingRef = useRef(false);
+  const userPickedMethodRef = useRef(false);
   const [routerStatus, setRouterStatus] = useState({
     loaded: false,
     configured: true,
@@ -215,7 +216,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       });
   }, []);
 
-  // Reset state when modal opens with a new plan
+  // Reset state ONLY when modal opens or selected plan changes (never when balance drops after purchase!)
   useEffect(() => {
     if (isOpen) {
       setStep('review');
@@ -223,10 +224,19 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       setVoucherData(null);
       setCopied(false);
       setAutoRenew(false);
+      userPickedMethodRef.current = false;
       setPaymentMethod(hasSufficientWallet ? 'wallet' : 'card');
       processingRef.current = false; // reset mutex when modal reopens
     }
-  }, [isOpen, plan, user, hasSufficientWallet]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, plan?.id]);
+
+  // Auto-select wallet when guest/user balance finishes loading while still on review step
+  useEffect(() => {
+    if (isOpen && step === 'review' && !userPickedMethodRef.current) {
+      setPaymentMethod(hasSufficientWallet ? 'wallet' : 'card');
+    }
+  }, [isOpen, step, hasSufficientWallet]);
 
   const isRouterOnline = routerStatus.online;
   const isRouterConfigured = routerStatus.configured !== false;
@@ -937,8 +947,8 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
               </div>
             )}
 
-            {/* Guest Details (only if not logged in) */}
-            {!user && (
+            {/* Guest Details (only when paying via Card/Transfer without signing in) */}
+            {!user && paymentMethod !== 'wallet' && (
               <div className="checkout-guest-fields">
                 <label className="checkout-field-label">Receipt & Notification</label>
                 <div className="checkout-input-group">
@@ -966,7 +976,10 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
               {/* Method: Wallet (works for BOTH Registered Users AND Guest Wallet!) */}
               <div
                 className={`checkout-method-option ${paymentMethod === 'wallet' ? 'selected' : ''}`}
-                onClick={() => setPaymentMethod('wallet')}
+                onClick={() => {
+                  userPickedMethodRef.current = true;
+                  setPaymentMethod('wallet');
+                }}
               >
                 <div className="method-radio">
                   <span className="radio-dot" />
@@ -990,7 +1003,10 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
               {/* Method: Online Card / Transfer (Flutterwave) */}
               <div
                 className={`checkout-method-option ${paymentMethod === 'card' ? 'selected' : ''}`}
-                onClick={() => setPaymentMethod('card')}
+                onClick={() => {
+                  userPickedMethodRef.current = true;
+                  setPaymentMethod('card');
+                }}
               >
                 <div className="method-radio">
                   <span className="radio-dot" />

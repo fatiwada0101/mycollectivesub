@@ -264,8 +264,9 @@ export async function POST(request) {
     }
 
     // 5. Record transaction + voucher — refund wallet if DB write fails
+    let insertedTxId = null;
     try {
-      const { data: tx } = await supabaseAdmin
+      const { data: tx, error: txErr } = await supabaseAdmin
         .from('transactions')
         .insert({
           user_id: effectiveUserId,
@@ -282,15 +283,18 @@ export async function POST(request) {
         .select('id')
         .single();
 
+      if (txErr) throw txErr;
+      insertedTxId = tx?.id || null;
+
       // 6. Record voucher in Supabase (with tx_ref for idempotency)
-      await supabaseAdmin
+      const { error: voucherErr } = await supabaseAdmin
         .from('vouchers')
         .insert({
           user_id: effectiveUserId,
           voucher_code: code,
           profile_name: effectivePlanName,
           price: numericPrice,
-          transaction_id: tx?.id || null,
+          transaction_id: insertedTxId,
           tx_ref: walletTxRef,
           is_used: false,
           auto_renew: !!auto_renew,
@@ -299,6 +303,8 @@ export async function POST(request) {
           activated_at: null,
           expires_at: null,
         });
+
+      if (voucherErr) throw voucherErr;
 
       logger.financial({
         action: 'wallet_voucher_purchase',
@@ -309,7 +315,10 @@ export async function POST(request) {
         details: { voucher_code: code, plan: effectivePlanName, is_fallback: isFallback },
       }, logger.getCorrelationId(request));
     } catch (dbErr) {
-      // DB insert failed after wallet was already deducted — refund immediately
+      // DB insert failed after wallet was already deducted — clean up orphaned tx and refund immediately
+      if (insertedTxId) {
+        try { await supabaseAdmin.from('transactions').delete().eq('id', insertedTxId); } catch {}
+      }
       logger.error('DB insert failed after provisioning — refunding wallet', { error: dbErr.message, ref: walletTxRef }, logger.getCorrelationId(request));
       await supabaseAdmin.rpc('adjust_wallet_balance', {
         p_user_id: effectiveUserId,
