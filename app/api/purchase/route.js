@@ -148,8 +148,7 @@ export async function POST(request) {
       '3d': '3d', '7d': '7d', '30d': '30d',
     };
 
-    // Calculate when this voucher expires (wall-clock time)
-    const voucherExpiresAt = calculateExpiresAt(effectiveDuration);
+    // Strict first-login wall-clock expiry: deadline is locked on the router at first connection
     const voucherLimitUptime = uptimeMap[effectiveDuration] || effectiveDuration || '1d';
 
     const rateLimit = `${planUploadSpeed}/${planDownloadSpeed}`;
@@ -266,7 +265,9 @@ export async function POST(request) {
           is_used: false,
           auto_renew: !!auto_renew,
           duration: voucherLimitUptime,
-          expires_at: voucherExpiresAt,
+          expiry_policy: 'first_login',
+          activated_at: null,
+          expires_at: null,
         });
 
       logger.financial({

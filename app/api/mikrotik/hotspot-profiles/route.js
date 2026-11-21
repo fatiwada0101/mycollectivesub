@@ -34,16 +34,18 @@ export async function PUT(request) {
       return NextResponse.json({ error: 'Profile name is required' }, { status: 400 });
     }
 
-    // Build the RouterOS profile object
+    // Build the RouterOS profile object (MAC cookie auto-reconnect enabled by default)
     const routerProfile = {
       name: profileData.name,
+      'add-mac-cookie': profileData['add-mac-cookie'] !== undefined ? String(profileData['add-mac-cookie']) : 'true',
+      'mac-cookie-timeout': profileData['mac-cookie-timeout'] || '4w2d',
+      'keepalive-timeout': profileData['keepalive-timeout'] || '2m',
     };
 
     if (profileData['rate-limit']) routerProfile['rate-limit'] = profileData['rate-limit'];
     if (profileData['shared-users']) routerProfile['shared-users'] = String(profileData['shared-users']);
     if (profileData['session-timeout']) routerProfile['session-timeout'] = profileData['session-timeout'];
     if (profileData['idle-timeout']) routerProfile['idle-timeout'] = profileData['idle-timeout'];
-    if (profileData['keepalive-timeout']) routerProfile['keepalive-timeout'] = profileData['keepalive-timeout'];
 
     const result = await createHotspotProfile(routerProfile, router_id || undefined);
     return NextResponse.json({ success: true, profile: result });
@@ -72,6 +74,8 @@ export async function PATCH(request) {
     if (updateData['session-timeout'] !== undefined) cleanData['session-timeout'] = updateData['session-timeout'];
     if (updateData['idle-timeout'] !== undefined) cleanData['idle-timeout'] = updateData['idle-timeout'];
     if (updateData['keepalive-timeout'] !== undefined) cleanData['keepalive-timeout'] = updateData['keepalive-timeout'];
+    if (updateData['add-mac-cookie'] !== undefined) cleanData['add-mac-cookie'] = String(updateData['add-mac-cookie']);
+    if (updateData['mac-cookie-timeout'] !== undefined) cleanData['mac-cookie-timeout'] = updateData['mac-cookie-timeout'];
 
     const result = await updateHotspotProfile(profile_id, cleanData, router_id || undefined);
     return NextResponse.json({ success: true, profile: result });

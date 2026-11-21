@@ -47,8 +47,9 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
 /user add name="${apiUser}" password="${apiPass}" group=full comment="MyCollectiveSub Cloud Integration"
 
 # 6. Configure Hotspot Server Profile Captive Portal URL (${hotspotUrl})
-/ip hotspot profile set [find default=yes] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap
-/ip hotspot profile set [find name="hsprof1"] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap
+/ip hotspot profile set [find default=yes] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap,mac-cookie http-cookie-lifetime=4w2d
+/ip hotspot profile set [find name="hsprof1"] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap,mac-cookie http-cookie-lifetime=4w2d
+/ip hotspot user profile set [find] add-mac-cookie=yes mac-cookie-timeout=4w2d
 
 # 7. Print your Cloud DDNS Domain (Copy the "dns-name" into Super Admin Router IP)
 /ip cloud print
@@ -68,8 +69,9 @@ export default function MikroTikSetupGuide({ mikrotikForm = {}, onSyncRouter, is
 /user add name="${apiUser}" password="${apiPass}" group=full comment="MyCollectiveSub Local Integration"
 
 # 3. Configure Hotspot Server Profile Captive Portal URL (${hotspotUrl})
-/ip hotspot profile set [find default=yes] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap
-/ip hotspot profile set [find name="hsprof1"] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap
+/ip hotspot profile set [find default=yes] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap,mac-cookie http-cookie-lifetime=4w2d
+/ip hotspot profile set [find name="hsprof1"] dns-name="${hotspotUrl}" login-by=cookie,http-chap,http-pap,mac-cookie http-cookie-lifetime=4w2d
+/ip hotspot user profile set [find] add-mac-cookie=yes mac-cookie-timeout=4w2d
 
 # 4. Verify Services
 /ip service print where name="www-ssl" or name="www"

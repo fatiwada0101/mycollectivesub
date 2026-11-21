@@ -189,6 +189,10 @@ export async function GET(request) {
             transaction_id: newTx?.id || null,
             tx_ref: txRef,
             is_used: false,
+            duration: plan?.duration || '1d',
+            expiry_policy: 'first_login',
+            activated_at: null,
+            expires_at: null,
             auto_renew: true, // Keep auto-renew alive on the new voucher
           });
 

@@ -9,6 +9,7 @@ import {
   syncRouterClockAndNtp,
   resolveHotspotGatewayIp,
   ensureFirstLoginExpiry,
+  ensureFirstLoginExpiryForAllProfiles,
 } from '@/lib/mikrotik';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { validateAdminAuth, unauthorizedResponse } from '@/lib/admin-auth';
@@ -216,8 +217,8 @@ export async function POST(request) {
         if (spDns) activeDnsNames.add(spDns.toLowerCase());
         const spPatch = {
           'dns-name': spDns,
-          'login-by': 'cookie,http-chap,http-pap',
-          'http-cookie-lifetime': '1d',
+          'login-by': 'cookie,http-chap,http-pap,mac-cookie',
+          'http-cookie-lifetime': '4w2d',
           'hotspot-address': spAddr,
           'html-directory': targetDir,
         };
@@ -233,15 +234,15 @@ export async function POST(request) {
           profilesUpdated++;
         } catch {}
       }
-      results.push({ step: 'Hotspot Portal Domain', status: 'ok', detail: `Updated ${profilesUpdated} server profile(s) (Gateway: ${hotspotGatewayIp}, Storage: ${targetDir}, Auth: PAP/CHAP/Cookie)` });
+      results.push({ step: 'Hotspot Portal Domain', status: 'ok', detail: `Updated ${profilesUpdated} server profile(s) (Gateway: ${hotspotGatewayIp}, Storage: ${targetDir}, Auth: PAP/CHAP/Cookie/MAC-Cookie)` });
     } else {
       // Create a new server profile
       try {
         await mikrotikCall('/rest/ip/hotspot/profile/add', 'POST', {
           name: 'asuk-profile',
           'dns-name': hotspotUrl,
-          'login-by': 'cookie,http-chap,http-pap',
-          'http-cookie-lifetime': '1d',
+          'login-by': 'cookie,http-chap,http-pap,mac-cookie',
+          'http-cookie-lifetime': '4w2d',
           'hotspot-address': hotspotGatewayIp,
           'html-directory': targetDir,
         });
@@ -417,7 +418,8 @@ export async function POST(request) {
             'rate-limit': rateLimit,
             'shared-users': sharedUsers,
             'keepalive-timeout': '00:02:00',
-            'add-mac-cookie': 'false',
+            'add-mac-cookie': 'true',
+            'mac-cookie-timeout': '4w2d',
           });
           updated++;
         } catch {}
@@ -428,7 +430,8 @@ export async function POST(request) {
             'rate-limit': rateLimit,
             'shared-users': sharedUsers,
             'keepalive-timeout': '00:02:00',
-            'add-mac-cookie': 'false',
+            'add-mac-cookie': 'true',
+            'mac-cookie-timeout': '4w2d',
           });
           created++;
         } catch {}
@@ -438,10 +441,30 @@ export async function POST(request) {
         expirySynced++;
       } catch {}
     }
+
+    // Enforce strict first-login wall-clock expiry + MAC-cookie auto-reconnect on EVERY
+    // hotspot user profile on this router (default, legacy Mikroticket, custom, and plans).
+    let allProfilesSynced = expirySynced;
+    try {
+      const allRes = await ensureFirstLoginExpiryForAllProfiles(routerId);
+      allProfilesSynced = allRes.totalProfiles;
+    } catch {
+      const defaultUserProf = existingProfiles.find(p => p.name === 'default');
+      if (defaultUserProf?.['.id']) {
+        try {
+          await mikrotikCall('/rest/ip/hotspot/user/profile/set', 'POST', {
+            '.id': defaultUserProf['.id'],
+            'keepalive-timeout': '00:02:00',
+            'add-mac-cookie': 'true',
+            'mac-cookie-timeout': '4w2d',
+          });
+        } catch {}
+      }
+    }
     results.push({
       step: 'Hotspot User Profiles',
       status: 'ok',
-      detail: `${created} created, ${updated} updated from ${(plans || []).length} active plans (${expirySynced} with first-login expiry enforced)`,
+      detail: `${created} created, ${updated} updated from ${(plans || []).length} active plans (${allProfilesSynced} total profiles with strict first-login expiry + MAC-cookie enforced)`,
     });
 
     // ═══ Step 6: Walled Garden — allow login page & payment domains before auth ═══

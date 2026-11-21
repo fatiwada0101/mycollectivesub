@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { PGlite } from '@electric-sql/pglite';
 import { durationSeconds, calculateExpiresAt, expiryComment, readExpiryComment, voucherDeadline, FIRST_LOGIN_SCRIPT, EXPIRY_SWEEP_SCRIPT } from '../lib/voucher-expiry.js';
-import { installFirstLoginExpiry } from '../lib/router-voucher-expiry.js';
+import { installFirstLoginExpiry, installFirstLoginExpiryForAllProfiles } from '../lib/router-voucher-expiry.js';
 import { z } from 'zod';
 
 const read = file => fs.readFile(new URL(`../${file}`, import.meta.url), 'utf8');
@@ -216,3 +216,128 @@ for (const duration of ['5h', '1d', '2d', '7d', '30d']) {
     assert.equal(voucher.status, 'expired');
   });
 }
+
+test('MAC-cookie auto-reconnect stays enabled across router setup/push while expiry and kicks purge cookies', async () => {
+  const writes = [];
+  const iso = new Date().toISOString();
+  const profile = { '.id': '*1', name: 'plan-1d', 'on-login': '', 'keepalive-timeout': '2m', 'add-mac-cookie': 'false' };
+  const get = {
+    '/system/resource': { version: '7.19.6 (stable)' },
+    '/system/ntp/client': { status: 'synchronized' },
+    '/system/clock': { date: iso.slice(0, 10), time: iso.slice(11, 19), 'gmt-offset': '+00:00' },
+    '/ip/hotspot/user/profile': [profile],
+    '/system/script': [{ '.id': '*s1', name: 'an-voucher-expiry-v1', source: EXPIRY_SWEEP_SCRIPT }],
+    '/system/scheduler': [{ '.id': '*sch1', name: 'an-voucher-expiry-v1' }],
+  };
+
+  await installFirstLoginExpiry(async (path, method = 'GET', body) => {
+    if (method === 'GET') return get[path];
+    writes.push({ path, body });
+    if (path.includes('/profile/')) Object.assign(profile, body);
+    return {};
+  }, 'plan-1d');
+
+  const patch = writes.find(w => w.path.includes('/profile/'))?.body;
+  assert.ok(patch, 'installer must patch profile when add-mac-cookie is false');
+  assert.equal(patch['add-mac-cookie'], 'true');
+  assert.equal(patch['mac-cookie-timeout'], '4w2d');
+  assert.equal(patch['keepalive-timeout'], '2m');
+
+  // Re-running once configured should not rewrite the profile
+  writes.length = 0;
+  await installFirstLoginExpiry(async (path, method = 'GET', body) => {
+    if (method === 'GET') return get[path];
+    writes.push({ path, body });
+    return {};
+  }, 'plan-1d');
+  assert.equal(writes.some(w => w.path.includes('/profile/')), false, 'already configured profile should not be rewritten');
+
+  // Expiry scripts must remove hotspot cookies on expiry so expired vouchers cannot reconnect
+  assert.ok(FIRST_LOGIN_SCRIPT.includes('/ip hotspot cookie remove [find where user=$user]'));
+  assert.ok(EXPIRY_SWEEP_SCRIPT.includes('/ip hotspot cookie remove [find where user=$anUser]'));
+
+  // Setup, login push, and guide code must never disable add-mac-cookie or strip mac-cookie from login-by
+  const [mikrotikSrc, autoSetupSrc, guideSrc, kickSrc] = await Promise.all([
+    read('lib/mikrotik.js'),
+    read('app/api/mikrotik/auto-setup/route.js'),
+    read('app/components/MikroTikSetupGuide.js'),
+    read('app/api/mikrotik/kick-user/route.js'),
+  ]);
+
+  assert.equal(autoSetupSrc.includes("'add-mac-cookie': 'false'"), false, 'auto-setup must not disable add-mac-cookie');
+  assert.equal(autoSetupSrc.includes("'login-by': 'cookie,http-chap,http-pap'"), false, 'auto-setup must include mac-cookie');
+  assert.equal(mikrotikSrc.includes("'login-by': 'cookie,http-chap,http-pap'"), false, 'mikrotik.js must not strip mac-cookie');
+  assert.ok(mikrotikSrc.includes('removeHotspotCookiesForUsers'), 'mikrotik.js must purge cookies for expired users');
+  assert.ok(kickSrc.includes('removeHotspotCookiesForUsers'), 'kick-user must clear cookies so kicked clients do not auto-relogin');
+  assert.equal(guideSrc.includes('login-by=cookie,http-chap,http-pap\n'), false, 'setup guide CLI must include mac-cookie');
+});
+
+test('all current and future profiles enforce strict first-login wall-clock expiry including legacy limit-uptime vouchers', async () => {
+  const writes = [];
+  const iso = new Date().toISOString();
+  const profiles = [
+    { '.id': '*0', name: 'default', 'on-login': '', 'keepalive-timeout': '2m', 'add-mac-cookie': 'true', 'mac-cookie-timeout': '4w2d' },
+    { '.id': '*1', name: 'profile_1GB-legacy', 'on-login': '', 'keepalive-timeout': '2m', 'add-mac-cookie': 'false' },
+    { '.id': '*2', name: '7 Days Business Pass', 'on-login': '# AN voucher expiry v2\nold\n# End AN voucher expiry v2\n:log info "custom"', 'keepalive-timeout': '2m', 'add-mac-cookie': 'true', 'mac-cookie-timeout': '4w2d' },
+  ];
+  const get = {
+    '/system/resource': { version: '7.20.8 (long-term)' },
+    '/system/ntp/client': { status: 'synchronized' },
+    '/system/clock': { date: iso.slice(0, 10), time: iso.slice(11, 19), 'gmt-offset': '+00:00' },
+    '/ip/hotspot/user/profile': profiles,
+    '/system/script': [],
+    '/system/scheduler': [],
+  };
+
+  const res = await installFirstLoginExpiryForAllProfiles(async (path, method = 'GET', body) => {
+    if (method === 'GET') return get[path];
+    writes.push({ path, method, body });
+    if (path.startsWith('/ip/hotspot/user/profile/')) {
+      const id = decodeURIComponent(path.split('/').pop());
+      const target = profiles.find(p => p['.id'] === id);
+      if (target) Object.assign(target, body);
+    }
+    if (path === '/system/script' && method === 'PUT') get['/system/script'].push({ '.id': '*s1', ...body });
+    if (path === '/system/scheduler' && method === 'PUT') get['/system/scheduler'].push({ '.id': '*sch1', ...body });
+    return {};
+  });
+
+  assert.equal(res.totalProfiles, 3);
+  assert.equal(res.patchedCount, 3);
+  for (const p of profiles) {
+    assert.ok(p['on-login'].startsWith(FIRST_LOGIN_SCRIPT), `${p.name} must have v3 first-login script`);
+    assert.equal(p['add-mac-cookie'], 'true');
+    assert.equal(p['mac-cookie-timeout'], '4w2d');
+  }
+  assert.ok(profiles[2]['on-login'].endsWith(':log info "custom"'), 'unrelated vendor on-login hook must be preserved');
+
+  // Re-running is idempotent (0 profile patches)
+  writes.length = 0;
+  const second = await installFirstLoginExpiryForAllProfiles(async (path, method = 'GET', body) => {
+    if (method === 'GET') return get[path];
+    writes.push({ path, method, body });
+    return {};
+  });
+  assert.equal(second.patchedCount, 0);
+
+  // FIRST_LOGIN_SCRIPT v3 must also lock wall-clock deadlines for non-ANV1 vouchers with limit-uptime
+  assert.ok(FIRST_LOGIN_SCRIPT.includes('limit-uptime'));
+  assert.ok(FIRST_LOGIN_SCRIPT.includes('[:typeof $anLim] = "time"'));
+  assert.ok(FIRST_LOGIN_SCRIPT.includes('[:tonsec $anLim] / 1000000000'));
+
+  // All voucher purchase/creation and profile setup flows must enforce first_login policy
+  const [purchaseSrc, verifySrc, createVoucherSrc, autoSetupSrc, plansSrc, mikrotikSrc] = await Promise.all([
+    read('app/api/purchase/route.js'),
+    read('app/api/purchase/verify-payment/route.js'),
+    read('app/api/mikrotik/create-voucher/route.js'),
+    read('app/api/mikrotik/auto-setup/route.js'),
+    read('app/api/super-admin/plans/route.js'),
+    read('lib/mikrotik.js'),
+  ]);
+  assert.ok(purchaseSrc.includes("expiry_policy: 'first_login'"));
+  assert.ok(verifySrc.includes("expiry_policy: 'first_login'"));
+  assert.ok(createVoucherSrc.includes("expiry_policy: 'first_login'"));
+  assert.ok(autoSetupSrc.includes('ensureFirstLoginExpiryForAllProfiles'));
+  assert.ok(plansSrc.includes('syncPlanProfileToOnlineRouters'));
+  assert.ok(mikrotikSrc.includes('syncPlanProfileToOnlineRouters'));
+});

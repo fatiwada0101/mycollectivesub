@@ -154,16 +154,25 @@ export async function GET(request) {
       }
     }
 
+    const routerMeta = readExpiryComment(routerUser?.comment);
     if (dbVoucher?.expiry_policy === 'first_login') {
-      const metadata = readExpiryComment(routerUser?.comment);
       // Wall-clock entitlement takes precedence over connected-time telemetry.
       secondsRemaining = dbVoucher.expires_at ? Math.max(0, Math.ceil((Date.parse(dbVoucher.expires_at) - Date.now()) / 1000)) : limitUptimeSeconds;
-      if (!metadata && !dbVoucher.expires_at && dbVoucher.status !== 'expired') {
+      if (!routerMeta && !dbVoucher.expires_at && dbVoucher.status !== 'expired') {
         return NextResponse.json({ valid: false, error: 'Unable to verify the router voucher deadline. Please retry.' }, { status: 503 });
       }
       if (routerUser?.disabled === 'true' || routerUser?.disabled === true) secondsRemaining = 0;
+    } else if (routerMeta) {
+      // Router-only or migrated legacy voucher with ANV1 wall-clock deadline
+      if (routerMeta.seconds > 0) limitUptimeSeconds = routerMeta.seconds;
+      secondsRemaining = routerMeta.expires_at
+        ? Math.max(0, Math.ceil((Date.parse(routerMeta.expires_at) - Date.now()) / 1000))
+        : limitUptimeSeconds;
+      if (routerUser?.disabled === 'true' || routerUser?.disabled === true) secondsRemaining = 0;
     }
-    const isUsed = !!(dbVoucher?.is_used || uptimeSeconds > 0 || isConnected);
+    const routerBytesLimit = Number(routerUser?.['limit-bytes-total']) || 0;
+    const isDataExhausted = routerBytesLimit > 0 && (bytesIn + bytesOut) >= routerBytesLimit;
+    const isUsed = !!(dbVoucher?.is_used || routerMeta?.deadline || uptimeSeconds > 0 || isConnected);
     if (isUsed && dbVoucher && !dbVoucher.is_used && dbVoucher.expiry_policy !== 'first_login') {
       const updates = { is_used: true };
       if (!dbVoucher.expires_at) {
@@ -179,7 +188,7 @@ export async function GET(request) {
 
     const totalSeconds = limitUptimeSeconds || 86400;
     const percentRemaining = Math.max(0, Math.min(100, Math.round((secondsRemaining / totalSeconds) * 100)));
-    const isExpired = (dbVoucher?.status === 'expired') || routerUser?.disabled === 'true' || routerUser?.disabled === true || (secondsRemaining <= 0 && isUsed);
+    const isExpired = (dbVoucher?.status === 'expired') || routerUser?.disabled === 'true' || routerUser?.disabled === true || isDataExhausted || (secondsRemaining <= 0 && isUsed);
     const isExpiringSoon = !isExpired && isUsed && (secondsRemaining < 1800 || percentRemaining <= 25); // < 30m or < 25%
 
     // 5. VALIDATION: If voucher is expired, disconnect from router and return explicit expired response
@@ -190,8 +199,8 @@ export async function GET(request) {
           console.warn(`Could not kick expired session ${code}:`, e.message);
         });
       }
-      // Remove user record from router so they cannot re-authenticate
-      if (routerUser && routerUser['.id'] && dbVoucher?.expiry_policy !== 'first_login') {
+      // Remove user record from router so they cannot re-authenticate (retain ANV1 records disabled)
+      if (routerUser && routerUser['.id'] && dbVoucher?.expiry_policy !== 'first_login' && !routerMeta) {
         await deleteHotspotUser(routerUser['.id'], targetRouterId).catch((e) => {
           console.warn(`Could not delete expired user ${code}:`, e.message);
         });
@@ -220,7 +229,7 @@ export async function GET(request) {
     }
 
     const totalBytes = bytesIn + bytesOut;
-    const rawLimit = dbVoucher?.bytes_limit || parseDataLimitToBytes(dbVoucher?.data_limit);
+    const rawLimit = dbVoucher?.bytes_limit || parseDataLimitToBytes(dbVoucher?.data_limit) || routerBytesLimit;
     const bytesLimit = rawLimit || null;
     const percentDataUsed = bytesLimit ? Math.min(100, Math.round((totalBytes / bytesLimit) * 100)) : null;
     const isDataLow = percentDataUsed !== null && percentDataUsed >= 80;
@@ -255,9 +264,9 @@ export async function GET(request) {
       mac_address: macAddress,
       router_online: routerOnline,
       created_at: dbVoucher?.created_at || null,
-      activated_at: dbVoucher?.activated_at || null,
-      expires_at: dbVoucher?.expires_at || null,
-      expiry_policy: dbVoucher?.expiry_policy || 'created_at',
+      activated_at: dbVoucher?.activated_at || routerMeta?.activated_at || null,
+      expires_at: dbVoucher?.expires_at || routerMeta?.expires_at || null,
+      expiry_policy: dbVoucher?.expiry_policy || (routerMeta ? 'first_login' : 'created_at'),
     });
   } catch (err) {
     console.error('Error fetching voucher session status:', err);

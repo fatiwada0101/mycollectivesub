@@ -322,8 +322,7 @@ export async function POST(request) {
       console.warn('Transaction record insert failed (non-fatal):', e.message);
     }
 
-    // Calculate when this voucher expires (wall-clock time)
-    const voucherExpiresAt = calculateExpiresAt(effectiveDuration);
+    // Strict first-login wall-clock expiry: deadline is locked on the router at first connection
     const voucherLimitUptime = uptimeMap[effectiveDuration] || effectiveDuration || '1d';
 
     // 7. Record successful voucher in Supabase (include tx_ref for idempotency)
@@ -339,7 +338,9 @@ export async function POST(request) {
         is_used: false,
         auto_renew: effectiveAutoRenew,
         duration: voucherLimitUptime,
-        expires_at: voucherExpiresAt,
+        expiry_policy: 'first_login',
+        activated_at: null,
+        expires_at: null,
       });
 
     logger.financial({

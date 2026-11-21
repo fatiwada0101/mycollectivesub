@@ -71,9 +71,8 @@ export async function POST(request) {
       routerId: router_id || undefined,
     });
 
-    // Calculate expiration timestamp
-    const limitDuration = uptimeMap[duration] || '1d';
-    const expiresAt = calculateExpiresAt(duration || '24h');
+    // Strict first-login wall-clock expiry: deadline is locked on the router at first connection
+    const limitDuration = uptimeMap[duration] || duration || '1d';
 
     // Record in Supabase
     await supabaseAdmin
@@ -84,7 +83,9 @@ export async function POST(request) {
         price: Number(price),
         is_used: false,
         duration: limitDuration,
-        expires_at: expiresAt,
+        expiry_policy: 'first_login',
+        activated_at: null,
+        expires_at: null,
         status: 'active',
         last_router_id: router_id || null,
       });

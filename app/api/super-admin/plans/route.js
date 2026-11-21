@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { validateAdminAuth, unauthorizedResponse } from '@/lib/admin-auth';
 import { validateBody, createPlanSchema, deletePlanSchema } from '@/lib/schemas';
-import { syncPortalTemplateToOnlineRouters } from '@/lib/mikrotik';
+import { syncPortalTemplateToOnlineRouters, syncPlanProfileToOnlineRouters } from '@/lib/mikrotik';
 
 // GET — fetch plans (active only for public, all plans for admin when requested)
 export async function GET(request) {
@@ -58,11 +58,15 @@ export async function POST(request) {
     if (error) throw error;
 
     let portalSync = [];
+    let profileSync = [];
     try {
-      portalSync = await syncPortalTemplateToOnlineRouters();
+      [portalSync, profileSync] = await Promise.all([
+        syncPortalTemplateToOnlineRouters(),
+        syncPlanProfileToOnlineRouters(plan),
+      ]);
     } catch {}
 
-    return NextResponse.json({ success: true, portalSync });
+    return NextResponse.json({ success: true, portalSync, profileSync });
   } catch (error) {
     console.error('Plan save error:', error);
     return NextResponse.json({ error: 'Failed to save plan' }, { status: 500 });

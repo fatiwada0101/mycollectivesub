@@ -240,8 +240,24 @@ export async function GET(request) {
       });
     }
 
-    // 4. Not in Supabase — check MikroTik hotspot users (pre-generated vouchers)
+    // 4. Not in Supabase — check MikroTik hotspot users (pre-generated / legacy vouchers)
     if (routerUser) {
+      const metadata = readExpiryComment(routerUser.comment);
+      const isDisabled = routerUser.disabled === 'true' || routerUser.disabled === true;
+      const isDeadlinePassed = !!(metadata?.deadline && Date.parse(metadata.expires_at) <= Date.now());
+      const limitBytes = Number(routerUser['limit-bytes-total']) || 0;
+      const usedBytes = (Number(routerUser['bytes-in']) || 0) + (Number(routerUser['bytes-out']) || 0);
+      const isDataExhausted = limitBytes > 0 && usedBytes >= limitBytes;
+
+      if (isDisabled || isDeadlinePassed || isDataExhausted) {
+        return NextResponse.json({
+          valid: false,
+          error: 'This voucher has expired. Please purchase a new plan.',
+          code,
+          is_expired: true,
+        }, { status: 410 });
+      }
+
       // Check if the user has remaining uptime
       if (routerUser['limit-uptime'] && routerUser.uptime) {
         const limitSec = parseDurationToSeconds(routerUser['limit-uptime']);
@@ -260,6 +276,9 @@ export async function GET(request) {
         valid: true,
         code,
         plan_name: routerUser.profile || 'Wi-Fi Hotspot Pass',
+        is_used: !!(metadata?.deadline || (routerUser.uptime && routerUser.uptime !== '0s')),
+        expires_at: metadata?.expires_at || null,
+        expiry_policy: metadata ? 'first_login' : 'router',
         source: 'router',
       });
     }
