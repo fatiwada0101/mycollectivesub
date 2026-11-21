@@ -73,7 +73,37 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Selected internet plan was not found in catalog' }, { status: 400 });
     }
 
-    const numericPrice = Number(authoritativePlan.price);
+    let numericPrice = Number(authoritativePlan.price);
+    try {
+      const { data: schedRow } = await supabaseAdmin
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'scheduler_rules')
+        .maybeSingle();
+      if (schedRow?.value) {
+        const rules = typeof schedRow.value === 'string' ? JSON.parse(schedRow.value) : schedRow.value;
+        if (Array.isArray(rules) && rules.length > 0 && numericPrice > 0) {
+          const now = new Date();
+          const wat = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 3600000);
+          const day = wat.getDay();
+          const hour = wat.getHours();
+          const active = rules.filter((r) => {
+            if (!r || !r.enabled) return false;
+            if (Array.isArray(r.days) && !r.days.includes(day)) return false;
+            return r.start_hour <= r.end_hour
+              ? hour >= r.start_hour && hour < r.end_hour
+              : hour >= r.start_hour || hour < r.end_hour;
+          });
+          if (active.length > 0) {
+            const top = [...active].sort((a, b) => (b.discount_percent || 0) - (a.discount_percent || 0))[0];
+            const discount = Math.min(Math.max(0, Number(top.discount_percent || 0)), 90);
+            if (discount > 0) {
+              numericPrice = Math.max(0, Math.round(numericPrice * (1 - discount / 100)));
+            }
+          }
+        }
+      }
+    } catch {}
     const effectivePlanName = authoritativePlan.name;
     const effectiveDuration = authoritativePlan.duration || duration || '24h';
 

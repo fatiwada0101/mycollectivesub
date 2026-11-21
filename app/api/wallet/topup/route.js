@@ -5,6 +5,52 @@ import { validateUserAuth, userUnauthorizedResponse } from '@/lib/user-auth.js';
 import { validateBody, walletTopupSchema } from '@/lib/schemas.js';
 import { logger } from '@/lib/logger.js';
 
+function resolveFlutterwavePaidAmount(flwTx) {
+  const amount = Number(flwTx?.amount || 0);
+  const chargedAmount = Number(flwTx?.charged_amount || 0);
+  const appFee = Math.max(0, Number(flwTx?.app_fee || 0));
+  const merchantFee = Math.max(0, Number(flwTx?.merchant_fee || 0));
+  const amountSettled = Number(flwTx?.amount_settled);
+
+  let grossPaid = Math.max(
+    Number.isFinite(amount) ? amount : 0,
+    Number.isFinite(chargedAmount) ? chargedAmount : 0
+  );
+
+  if (appFee > 0 || merchantFee > 0) {
+    const feeNoVat = Math.round((appFee + merchantFee) * 100) / 100;
+    const feeWithVat = Math.ceil((appFee * 1.075 + merchantFee) * 100) / 100;
+    const maxReasonableFee = Math.max(10, grossPaid * 0.06);
+
+    const settledMatchesAmount =
+      Number.isFinite(amountSettled) &&
+      amountSettled > 0 &&
+      Math.abs(amountSettled - amount) <= 0.05;
+
+    const noSettledField = !Number.isFinite(amountSettled) || amountSettled <= 0;
+    const candidateNoVat = Math.round((amount + feeNoVat) * 100) / 100;
+    const candidateWithVat = Math.round((amount + feeWithVat) * 100) / 100;
+
+    if (settledMatchesAmount) {
+      if (Math.abs(candidateWithVat - Math.round(candidateWithVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateWithVat));
+      } else if (Math.abs(candidateNoVat - Math.round(candidateNoVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateNoVat));
+      } else {
+        grossPaid = Math.max(grossPaid, candidateNoVat, candidateWithVat);
+      }
+    } else if (noSettledField && feeNoVat <= maxReasonableFee) {
+      if (Math.abs(candidateWithVat - Math.round(candidateWithVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateWithVat));
+      } else if (Math.abs(candidateNoVat - Math.round(candidateNoVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateNoVat));
+      }
+    }
+  }
+
+  return grossPaid;
+}
+
 export async function POST(request) {
   try {
     const { data: body, error: validationError } = await validateBody(walletTopupSchema, request);
@@ -40,7 +86,7 @@ export async function POST(request) {
     // 2. IDEMPOTENCY: Check if this ref was already processed
     const { data: existingTx } = await supabaseAdmin
       .from('transactions')
-      .select('id')
+      .select('id, amount')
       .eq('flw_ref', ref)
       .maybeSingle();
 
@@ -53,7 +99,7 @@ export async function POST(request) {
 
       return NextResponse.json({
         success: true,
-        amount: numericAmount,
+        amount: Number(existingTx.amount || numericAmount),
         balance: Number(walletData?.balance || 0),
         reference: ref,
         message: 'Already processed',
@@ -84,6 +130,7 @@ export async function POST(request) {
     if (activeGateway === 'monnify') {
       return NextResponse.json({ error: 'Initialize a Monnify order before verification' }, { status: 400 });
     }
+    let flwVerifiedTx = null;
     {
       // ── FLUTTERWAVE VERIFICATION ──
       let secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
@@ -105,7 +152,7 @@ export async function POST(request) {
       }
 
       try {
-        const flwRes = await fetch(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+        const flwRes = await fetch(`https://api.flutterwave.com/v3/transactions/${encodeURIComponent(String(transaction_id))}/verify`, {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${secretKey}` },
         });
@@ -115,20 +162,23 @@ export async function POST(request) {
         }
 
         const flwData = await flwRes.json();
-        if (flwData.status !== 'success' || flwData.data?.status !== 'successful') {
+        const flwStatus = String(flwData.data?.status || '').toLowerCase();
+        if (flwData.status !== 'success' || (flwStatus !== 'successful' && flwStatus !== 'completed')) {
           return NextResponse.json({ error: 'Payment was not successful or was declined' }, { status: 400 });
         }
 
-        const verifiedAmount = Number(flwData.data?.amount || 0);
-        if (verifiedAmount < numericAmount) {
+        flwVerifiedTx = flwData.data || {};
+        const verifiedAmount = resolveFlutterwavePaidAmount(flwVerifiedTx);
+        const feeAllowance = Math.min(100, Math.max(5, Math.ceil(numericAmount * 0.035)));
+        if (verifiedAmount + feeAllowance < numericAmount) {
           return NextResponse.json({ error: `Verified deposit (₦${verifiedAmount}) does not match (₦${numericAmount})` }, { status: 400 });
         }
 
-        if (flwData.data?.tx_ref && flw_ref && flwData.data.tx_ref !== flw_ref) {
+        if (flwVerifiedTx.tx_ref && flw_ref && flwVerifiedTx.tx_ref !== flw_ref) {
           return NextResponse.json({ error: 'Transaction reference mismatch' }, { status: 400 });
         }
 
-        if (flwData.data?.currency && flwData.data.currency !== 'NGN') {
+        if (flwVerifiedTx.currency && String(flwVerifiedTx.currency).toUpperCase() !== 'NGN') {
           return NextResponse.json({ error: 'Invalid transaction currency' }, { status: 400 });
         }
       } catch (flwErr) {
@@ -138,7 +188,7 @@ export async function POST(request) {
     }
 
     // Use authoritative reference from gateway if present
-    const authoritativeRef = ref;
+    const authoritativeRef = flwVerifiedTx?.tx_ref || ref;
 
     // 4. ATOMIC idempotency: Insert transaction first
     const { data: insertedTx, error: txInsertErr } = await supabaseAdmin
@@ -150,6 +200,13 @@ export async function POST(request) {
         status: 'successful',
         flw_ref: authoritativeRef,
         payment_method: 'card',
+        metadata: {
+          gateway: 'flutterwave',
+          transaction_id,
+          charged_amount: Number(flwVerifiedTx?.charged_amount || numericAmount),
+          app_fee: Number(flwVerifiedTx?.app_fee || 0),
+          amount_settled: Number(flwVerifiedTx?.amount_settled || numericAmount),
+        },
       }, { onConflict: 'flw_ref', ignoreDuplicates: true })
       .select('id, user_id, amount, flw_ref, status, created_at')
       .maybeSingle();

@@ -162,8 +162,12 @@ export default function PackagesPage() {
 
   // Find a flagship / popular plan for the top hero banner
   const featuredPlan = useMemo(() => {
-    return plans.find((p) => p.popular) || plans[0] || null;
-  }, [plans]);
+    const raw = plans.find((p) => p.popular) || plans[0] || null;
+    if (!raw) return null;
+    const pricing = getPlanPricing(raw);
+    return pricing.isDiscounted ? { ...raw, price: pricing.price, originalPrice: pricing.originalPrice, badge: pricing.badge } : raw;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plans, schedulerRules]);
 
   return (
     <div className="app-shell">

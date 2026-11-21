@@ -39,6 +39,8 @@ export async function GET() {
 
     let flwPublicKey = process.env.FLUTTERWAVE_PUBLIC_KEY || '';
     let flwEnabled = false;
+    let flwPassFeeToCustomer = false;
+    let flwFeePercent = 2.15;
     let monnifyApiKey = '';
     let monnifyContractCode = '';
     let monnifyEnabled = false;
@@ -60,6 +62,11 @@ export async function GET() {
         if (s.key === 'flutterwave' && s.value) {
           if (s.value.public_key) flwPublicKey = s.value.public_key;
           flwEnabled = !!s.value.enabled;
+          flwPassFeeToCustomer = !!(s.value.pass_fee_to_customer || s.value.passFeeToCustomer);
+          if (s.value.fee_percent !== undefined || s.value.feePercent !== undefined) {
+            const pct = Number(s.value.fee_percent ?? s.value.feePercent);
+            if (Number.isFinite(pct) && pct >= 0 && pct <= 10) flwFeePercent = pct;
+          }
         }
         if (s.key === 'monnify' && s.value) {
           if (s.value.api_key) monnifyApiKey = s.value.api_key;
@@ -90,6 +97,8 @@ export async function GET() {
       flutterwave: {
         publicKey: flwPublicKey,
         enabled: flwEnabled,
+        passFeeToCustomer: flwPassFeeToCustomer,
+        feePercent: flwFeePercent,
       },
       monnify: {
         apiKey: monnifyApiKey,

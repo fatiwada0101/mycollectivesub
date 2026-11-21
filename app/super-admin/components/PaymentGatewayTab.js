@@ -134,15 +134,50 @@ export default function PaymentGatewayTab({
           </div>
         </div>
 
-        <div className="sa-ssl-check-row">
+        <div className="sa-ssl-check-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
           <label className="sa-checkbox-label">
             <input
               type="checkbox"
-              checked={flutterwaveForm.enabled}
+              checked={!!flutterwaveForm.enabled}
               onChange={e => setFlutterwaveForm({ ...flutterwaveForm, enabled: e.target.checked })}
             />
             <span>Enable Live Flutterwave Checkout</span>
           </label>
+
+          <label className="sa-checkbox-label">
+            <input
+              type="checkbox"
+              checked={!!flutterwaveForm.pass_fee_to_customer}
+              onChange={e => setFlutterwaveForm({
+                ...flutterwaveForm,
+                pass_fee_to_customer: e.target.checked,
+                fee_percent: flutterwaveForm.fee_percent ?? 2.15,
+              })}
+            />
+            <span>Pass Flutterwave processing fee to customer (auto-add ~2.15% fee at checkout so you receive full plan/deposit amount)</span>
+          </label>
+
+          {flutterwaveForm.pass_fee_to_customer ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 14px', borderRadius: '12px', background: 'rgba(0, 136, 255, 0.08)', border: '1px solid rgba(0, 136, 255, 0.25)', fontSize: '12px' }}>
+              <span style={{ fontWeight: 700 }}>Gateway Fee % (incl. 7.5% VAT):</span>
+              <input
+                type="number"
+                min="0"
+                max="10"
+                step="0.05"
+                value={flutterwaveForm.fee_percent ?? 2.15}
+                onChange={e => setFlutterwaveForm({ ...flutterwaveForm, fee_percent: parseFloat(e.target.value) || 0 })}
+                style={{ width: '90px', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(0,136,255,0.35)', fontWeight: 700 }}
+              />
+              <span style={{ opacity: 0.8 }}>
+                Example: ₦100 plan → customer pays ₦{100 + Math.min(Math.ceil(100 / (1 - Math.min(10, Math.max(0, Number(flutterwaveForm.fee_percent ?? 2.15))) / 100)) - 100, 2150)} and receives full ₦100 pass/wallet credit.
+              </span>
+            </div>
+          ) : (
+            <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', fontSize: '12px', opacity: 0.9 }}>
+              ✓ <strong>Merchant absorbs fee (default):</strong> Guests and logged-in users pay the exact plan or deposit price (e.g. ₦100) and always receive their full voucher or full ₦100 wallet credit even after Flutterwave deducts its ~₦2.15–₦3 fee.
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: 20 }}>

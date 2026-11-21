@@ -8,6 +8,72 @@ import { validateBody, verifyPaymentSchema } from '@/lib/schemas';
 import { logger } from '@/lib/logger';
 import { sendVoucherSms } from '@/lib/sms';
 
+function resolveFlutterwavePaidAmount(flwTx) {
+  const amount = Number(flwTx?.amount || 0);
+  const chargedAmount = Number(flwTx?.charged_amount || 0);
+  const appFee = Math.max(0, Number(flwTx?.app_fee || 0));
+  const merchantFee = Math.max(0, Number(flwTx?.merchant_fee || 0));
+  const amountSettled = Number(flwTx?.amount_settled);
+
+  let grossPaid = Math.max(
+    Number.isFinite(amount) ? amount : 0,
+    Number.isFinite(chargedAmount) ? chargedAmount : 0
+  );
+
+  if (appFee > 0 || merchantFee > 0) {
+    const feeNoVat = Math.round((appFee + merchantFee) * 100) / 100;
+    const feeWithVat = Math.ceil((appFee * 1.075 + merchantFee) * 100) / 100;
+    const maxReasonableFee = Math.max(10, grossPaid * 0.06);
+
+    const settledMatchesAmount =
+      Number.isFinite(amountSettled) &&
+      amountSettled > 0 &&
+      Math.abs(amountSettled - amount) <= 0.05;
+
+    const noSettledField = !Number.isFinite(amountSettled) || amountSettled <= 0;
+    const candidateNoVat = Math.round((amount + feeNoVat) * 100) / 100;
+    const candidateWithVat = Math.round((amount + feeWithVat) * 100) / 100;
+
+    if (settledMatchesAmount) {
+      if (Math.abs(candidateWithVat - Math.round(candidateWithVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateWithVat));
+      } else if (Math.abs(candidateNoVat - Math.round(candidateNoVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateNoVat));
+      } else {
+        grossPaid = Math.max(grossPaid, candidateNoVat, candidateWithVat);
+      }
+    } else if (noSettledField && feeNoVat <= maxReasonableFee) {
+      if (Math.abs(candidateWithVat - Math.round(candidateWithVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateWithVat));
+      } else if (Math.abs(candidateNoVat - Math.round(candidateNoVat)) <= 0.05) {
+        grossPaid = Math.max(grossPaid, Math.round(candidateNoVat));
+      }
+    }
+  }
+
+  return grossPaid;
+}
+
+function resolveScheduledPlanPrice(basePrice, rules) {
+  const numericBase = Number(basePrice || 0);
+  if (!Array.isArray(rules) || rules.length === 0 || numericBase <= 0) return numericBase;
+  const now = new Date();
+  const wat = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 3600000);
+  const day = wat.getDay();
+  const hour = wat.getHours();
+  const active = rules.filter((r) => {
+    if (!r || !r.enabled) return false;
+    if (Array.isArray(r.days) && !r.days.includes(day)) return false;
+    return r.start_hour <= r.end_hour
+      ? hour >= r.start_hour && hour < r.end_hour
+      : hour >= r.start_hour || hour < r.end_hour;
+  });
+  if (active.length === 0) return numericBase;
+  const top = [...active].sort((a, b) => (b.discount_percent || 0) - (a.discount_percent || 0))[0];
+  const discount = Math.min(Math.max(0, Number(top.discount_percent || 0)), 90);
+  return discount > 0 ? Math.max(0, Math.round(numericBase * (1 - discount / 100))) : numericBase;
+}
+
 async function verifyFlutterwaveTransaction(transactionId, txRef) {
   let secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
   try {
@@ -48,7 +114,8 @@ async function verifyFlutterwaveTransaction(transactionId, txRef) {
     }
 
     const flwData = await flwRes.json();
-    if (flwData.status !== 'success' || flwData.data?.status !== 'successful') {
+    const flwStatus = String(flwData.data?.status || '').toLowerCase();
+    if (flwData.status !== 'success' || (flwStatus !== 'successful' && flwStatus !== 'completed')) {
       return {
         errorResponse: NextResponse.json({ error: 'Payment was not successful or was declined' }, { status: 400 }),
       };
@@ -60,7 +127,7 @@ async function verifyFlutterwaveTransaction(transactionId, txRef) {
       };
     }
 
-    if (flwData.data?.currency && flwData.data.currency !== 'NGN') {
+    if (flwData.data?.currency && String(flwData.data.currency).toUpperCase() !== 'NGN') {
       return {
         errorResponse: NextResponse.json({ error: 'Invalid currency for transaction' }, { status: 400 }),
       };
@@ -181,9 +248,22 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Selected internet plan was not found in catalog' }, { status: 400 });
     }
 
-    const authoritativePrice = Number(planData.price);
-    const paidAmount = Number(flwTx.amount || 0);
-    if (paidAmount < authoritativePrice) {
+    let authoritativePrice = Number(planData.price);
+    try {
+      const { data: schedRow } = await supabaseAdmin
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'scheduler_rules')
+        .maybeSingle();
+      if (schedRow?.value) {
+        const parsedRules = typeof schedRow.value === 'string' ? JSON.parse(schedRow.value) : schedRow.value;
+        authoritativePrice = resolveScheduledPlanPrice(authoritativePrice, parsedRules);
+      }
+    } catch {}
+
+    const paidAmount = resolveFlutterwavePaidAmount(flwTx);
+    const feeAllowance = Math.min(100, Math.max(5, Math.ceil(authoritativePrice * 0.035)));
+    if (paidAmount + feeAllowance < authoritativePrice) {
       return NextResponse.json({ error: `Payment amount (₦${paidAmount}) does not match plan price (₦${authoritativePrice})` }, { status: 400 });
     }
 
@@ -313,6 +393,10 @@ export async function POST(request) {
             plan_name: effectivePlanName,
             voucher_code: code,
             duration: effectiveDuration || null,
+            gateway: 'flutterwave',
+            charged_amount: Number(flwTx.charged_amount || paidAmount || authoritativePrice),
+            app_fee: Number(flwTx.app_fee || 0),
+            amount_settled: Number(flwTx.amount_settled || authoritativePrice),
           },
         })
         .select('id')

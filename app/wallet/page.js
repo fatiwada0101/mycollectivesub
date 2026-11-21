@@ -261,6 +261,13 @@ function WalletContent() {
 
   const depositNum = Math.max(0, parseFloat(amountVal) || 0);
   const projectedBalance = walletBalance + depositNum;
+  const passFlwFeePreview = !!(flwConfig?.passFeeToCustomer || flwConfig?.pass_fee_to_customer);
+  const flwFeePctPreview = Math.min(10, Math.max(0, Number(flwConfig?.feePercent ?? flwConfig?.fee_percent ?? 2.15) || 0));
+  const flwDepositFeePreview =
+    activeGateway === 'flutterwave' && passFlwFeePreview && flwFeePctPreview > 0 && depositNum > 0
+      ? Math.min(Math.ceil(depositNum / (1 - flwFeePctPreview / 100)) - depositNum, 2150)
+      : 0;
+  const flwDepositTotalPreview = depositNum + flwDepositFeePreview;
 
   const handleFundWallet = async () => {
     if (loading || topupProcessingRef.current || monnifyCheckoutOpenRef.current) return;
@@ -355,6 +362,12 @@ function WalletContent() {
     const txRef = `FLW_TOPUP_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const redirectOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
     let flwVerificationStarted = false;
+    const passFlwFee = !!(flwConfig?.passFeeToCustomer || flwConfig?.pass_fee_to_customer);
+    const flwFeePct = Math.min(10, Math.max(0, Number(flwConfig?.feePercent ?? flwConfig?.fee_percent ?? 2.15) || 0));
+    const flwGatewayFee = passFlwFee && flwFeePct > 0 && depositNum > 0
+      ? Math.min(Math.ceil(depositNum / (1 - flwFeePct / 100)) - depositNum, 2150)
+      : 0;
+    const flwCheckoutAmount = depositNum + flwGatewayFee;
     try {
       sessionStorage.setItem(`flw-topup-${user.id}`, JSON.stringify({ amount: depositNum, tx_ref: txRef }));
     } catch {}
@@ -362,7 +375,7 @@ function WalletContent() {
     window.FlutterwaveCheckout({
       public_key: flwConfig.publicKey,
       tx_ref: txRef,
-      amount: depositNum,
+      amount: flwCheckoutAmount,
       currency: 'NGN',
       payment_options: 'card,banktransfer,ussd',
       // redirect_url: Flutterwave redirects here on mobile/USSD instead of firing the JS callback.
@@ -376,6 +389,8 @@ function WalletContent() {
       meta: {
         user_id: user.id,
         type: 'wallet_topup',
+        intended_amount: depositNum,
+        gateway_fee: flwGatewayFee,
       },
       customizations: {
         title: `${appName} Wallet Deposit`,
@@ -774,9 +789,15 @@ function WalletContent() {
             <span>{formatPrice(walletBalance)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#035EC8', fontWeight: 700 }}>
-            <span>+ Deposit Amount:</span>
+            <span>+ Wallet Credit:</span>
             <span>{formatPrice(depositNum)}</span>
           </div>
+          {flwDepositFeePreview > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#71717A', fontSize: '12px' }}>
+              <span>Flutterwave Gateway Fee:</span>
+              <span>+{formatPrice(flwDepositFeePreview)} (Total: {formatPrice(flwDepositTotalPreview)})</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E4E4E7', paddingTop: '6px', fontWeight: 800, color: '#18181B' }}>
             <span>Projected Balance:</span>
             <span>{formatPrice(projectedBalance)}</span>

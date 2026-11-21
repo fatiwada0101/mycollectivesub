@@ -151,6 +151,13 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
   const walletBalance = wallet ? parseFloat(wallet.balance) : 0;
   const price = plan ? Number(plan.price) : 0;
   const hasSufficientWallet = walletBalance >= price;
+  const passFlwFeePreview = !!(flwConfig?.passFeeToCustomer || flwConfig?.pass_fee_to_customer);
+  const flwFeePctPreview = Math.min(10, Math.max(0, Number(flwConfig?.feePercent ?? flwConfig?.fee_percent ?? 2.15) || 0));
+  const flwGatewayFeePreview =
+    activeGateway === 'flutterwave' && passFlwFeePreview && flwFeePctPreview > 0 && price > 0
+      ? Math.min(Math.ceil(price / (1 - flwFeePctPreview / 100)) - price, 2150)
+      : 0;
+  const cardCheckoutTotal = price + flwGatewayFeePreview;
 
   // Fetch public gateway & router health config
   useEffect(() => {
@@ -533,6 +540,12 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
     const txRef = 'FLW_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7).toUpperCase();
     const redirectOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
     let verificationStarted = false;
+    const passFlwFee = !!(flwConfig?.passFeeToCustomer || flwConfig?.pass_fee_to_customer);
+    const flwFeePct = Math.min(10, Math.max(0, Number(flwConfig?.feePercent ?? flwConfig?.fee_percent ?? 2.15) || 0));
+    const flwGatewayFee = passFlwFee && flwFeePct > 0 && price > 0
+      ? Math.min(Math.ceil(price / (1 - flwFeePct / 100)) - price, 2150)
+      : 0;
+    const flwCheckoutAmount = price + flwGatewayFee;
 
     try {
       sessionStorage.setItem(`flw-order-${txRef}`, JSON.stringify({
@@ -552,7 +565,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       window.FlutterwaveCheckout({
         public_key: flwConfig.publicKey,
         tx_ref: txRef,
-        amount: price,
+        amount: flwCheckoutAmount,
         currency: 'NGN',
         payment_options: 'card,banktransfer,ussd',
         // redirect_url: Flutterwave redirects here on mobile/USSD instead of firing JS callback.
@@ -567,6 +580,8 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
           type: 'voucher_purchase',
           plan_id: plan.id,
           plan_name: plan.name,
+          intended_amount: price,
+          gateway_fee: flwGatewayFee,
           user_id: user?.id || null,
           auto_renew: !!autoRenew,
         },
@@ -586,7 +601,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
                 method: 'POST',
                 headers: createPaymentHeaders(sessionData?.session?.access_token),
                 body: JSON.stringify({
-                  transaction_id: response.transaction_id,
+                  transaction_id: response.transaction_id || response.id,
                   tx_ref: response.tx_ref || txRef,
                   plan_id: plan.id,
                   plan_name: plan.name,
@@ -908,7 +923,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
                 )
               ) : (
                 <button className="btn btn-primary btn-block checkout-pay-btn" onClick={handleCardPayment} disabled={step === 'processing'}>
-                  Pay {formatPrice(plan.price)} via Card / Transfer
+                  Pay {formatPrice(cardCheckoutTotal)} via Card / Transfer{flwGatewayFeePreview > 0 ? ` (incl. ₦${flwGatewayFeePreview} fee)` : ''}
                 </button>
               )}
             </div>

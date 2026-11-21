@@ -291,3 +291,316 @@ test('dashboard, vouchers, landing, and auth screens preserve guest persistence 
     }
   }
 });
+
+test('Flutterwave fee deductions (₦100 plan -> ₦97 net after ₦3 charge) allow both guest and logged-in voucher purchase while blocking real underpayment', async () => {
+  const schemas = await loadModule('lib/schemas.js', {}, ['verifyPaymentSchema', 'validateBody']);
+  const feeHelper = await loadModule('lib/flutterwave-fees.js', {}, [
+    'calculateFlutterwaveCheckoutAmounts',
+    'resolveFlutterwavePaidAmount',
+    'resolveFlutterwaveWalletCredit',
+  ]);
+
+  // 1. Unit check on fee helper across all real-world Flutterwave payload shapes
+  assert.equal(feeHelper.resolveFlutterwavePaidAmount({ amount: 97, charged_amount: 100, app_fee: 3, amount_settled: 97 }), 100);
+  assert.equal(feeHelper.resolveFlutterwavePaidAmount({ amount: 97, charged_amount: 97, app_fee: 3 }), 100);
+  assert.equal(feeHelper.resolveFlutterwavePaidAmount({ amount: 97.85, charged_amount: 97.85, app_fee: 2, amount_settled: 97.85 }), 100);
+  assert.equal(feeHelper.resolveFlutterwavePaidAmount({ amount: 100, charged_amount: 100, app_fee: 2, amount_settled: 97.85 }), 100);
+  assert.equal(feeHelper.resolveFlutterwavePaidAmount({ amount: 50, charged_amount: 50, app_fee: 1, amount_settled: 48.92 }), 50);
+
+  const grossUp = feeHelper.calculateFlutterwaveCheckoutAmounts(100, { passFeeToCustomer: true, feePercent: 2.15 });
+  assert.equal(grossUp.intendedAmount, 100);
+  assert.equal(grossUp.fee, 3);
+  assert.equal(grossUp.totalAmount, 103);
+
+  // 2. End-to-end verify-payment route test for Guest & Logged-in user with ₦3 Flutterwave fee deduction
+  let flwMockPayload = null;
+  const insertedVouchers = [];
+  const insertedTransactions = [];
+
+  const createQuery = (table) => {
+    const filters = [];
+    const q = {
+      select() { return q; },
+      eq(k, v) { filters.push([k, v]); return q; },
+      insert(row) {
+        if (table === 'vouchers') insertedVouchers.push(row);
+        if (table === 'transactions') insertedTransactions.push(row);
+        return {
+          select() { return { single: async () => ({ data: { id: `tx-${insertedTransactions.length}` } }) }; },
+          then: resolve => resolve({ data: row, error: null }),
+        };
+      },
+      async maybeSingle() {
+        if (table === 'vouchers') {
+          const txRef = filters.find(([k]) => k === 'tx_ref')?.[1];
+          return { data: insertedVouchers.find(v => v.tx_ref === txRef) || null };
+        }
+        if (table === 'app_settings') {
+          const key = filters.find(([k]) => k === 'key')?.[1];
+          if (key === 'payment_gateway') return { data: { value: { active: 'flutterwave' } } };
+          if (key === 'flutterwave') return { data: { value: { secret_key: 'FLWSECK-test', enabled: true } } };
+          if (key === 'hotspot_settings') return { data: { value: { expiry_mode: 'elapsed', sharing_enabled: false } } };
+        }
+        if (table === 'plans') {
+          const id = filters.find(([k]) => k === 'id')?.[1];
+          if (id === 'plan-1hr') {
+            return { data: { id: 'plan-1hr', name: '3 Hour Fast Pass', price: 100, duration: '3h', devices: 1, upload_speed: '10M', download_speed: '10M' } };
+          }
+        }
+        return { data: null };
+      },
+    };
+    return q;
+  };
+
+  let codeCounter = 10000;
+  const { POST } = await loadModule('app/api/purchase/verify-payment/route.js', {
+    ...schemas,
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: { from: createQuery, rpc: async () => ({ data: [] }) },
+    fulfillMonnifyPayment: async () => ({}),
+    validateUserAuth: async () => null,
+    isMikroTikConfigured: async () => true,
+    calculateExpiresAt: () => new Date().toISOString(),
+    createOrQueueHotspotUser: async opts => ({ routerId: '*10', profile: opts.profile }),
+    generateUniqueCode: async () => String(++codeCounter),
+    logger: { financial() {}, getCorrelationId: () => 'cid-fee' },
+    sendVoucherSms: async () => {},
+    fetch: async () => Response.json({ status: 'success', data: flwMockPayload }),
+  }, ['POST']);
+
+  // Case A: Guest pays ₦100, Flutterwave removes ₦3 fee leaving amount=97
+  flwMockPayload = {
+    status: 'successful',
+    amount: 97,
+    charged_amount: 97,
+    app_fee: 3,
+    amount_settled: 97,
+    currency: 'NGN',
+    tx_ref: 'FLW_GUEST_100_FEE3',
+    customer: { email: 'guest@example.com' },
+    meta: { plan_id: 'plan-1hr' },
+  };
+  const guestRes = await POST(new Request('https://test.local/api/purchase/verify-payment', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transaction_id: '9001', tx_ref: 'FLW_GUEST_100_FEE3', plan_id: 'plan-1hr', price: 100 }),
+  }));
+  assert.equal(guestRes.status, 200, 'Guest ₦100 purchase with ₦3 Flutterwave fee deduction must succeed');
+  const guestBody = await guestRes.json();
+  assert.equal(guestBody.voucher_code, '10001');
+  assert.equal(insertedVouchers[0].user_id, null);
+  assert.equal(insertedVouchers[0].price, 100);
+
+  // Case B: Logged-in user pays for ₦100 plan, Flutterwave reports 2% + 7.5% VAT (₦2.15) fee-netted (97.85)
+  const loggedInUserId = '00000000-0000-4000-8000-000000000077';
+  flwMockPayload = {
+    status: 'successful',
+    amount: 97.85,
+    charged_amount: 97.85,
+    app_fee: 2,
+    amount_settled: 97.85,
+    currency: 'NGN',
+    tx_ref: 'FLW_USER_100_VAT',
+    customer: { email: 'member@example.com' },
+    meta: { plan_id: 'plan-1hr', user_id: loggedInUserId },
+  };
+  const userRes = await POST(new Request('https://test.local/api/purchase/verify-payment', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transaction_id: '9002', tx_ref: 'FLW_USER_100_VAT', plan_id: 'plan-1hr', user_id: loggedInUserId }),
+  }));
+  assert.equal(userRes.status, 200, 'Logged-in ₦100 purchase with ₦2.15 Flutterwave fee+VAT deduction must succeed');
+  assert.equal(insertedVouchers[1].user_id, loggedInUserId);
+
+  // Case B2: Pre-netted ₦97 payload where Flutterwave also took app_fee from 97 (amount: 97, amount_settled: 95.06)
+  flwMockPayload = {
+    status: 'successful',
+    amount: 97,
+    charged_amount: 97,
+    app_fee: 1.94,
+    amount_settled: 95.06,
+    currency: 'NGN',
+    tx_ref: 'FLW_GUEST_97_NETTED',
+    customer: { email: 'guest2@example.com' },
+    meta: { plan_id: 'plan-1hr' },
+  };
+  const preNettedRes = await POST(new Request('https://test.local/api/purchase/verify-payment', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transaction_id: '90025', tx_ref: 'FLW_GUEST_97_NETTED', plan_id: 'plan-1hr' }),
+  }));
+  assert.equal(preNettedRes.status, 200, '₦97 payment after ₦3 charge must succeed even when amount_settled < amount');
+
+  // Case C: Real underpayment (attacker pays ₦50 or ₦90 for ₦100 plan) MUST still be rejected with 400
+  flwMockPayload = {
+    status: 'successful',
+    amount: 90,
+    charged_amount: 90,
+    app_fee: 1.8,
+    amount_settled: 88.06,
+    currency: 'NGN',
+    tx_ref: 'FLW_UNDERPAY_50',
+    customer: { email: 'attacker@example.com' },
+    meta: { plan_id: 'plan-1hr' },
+  };
+  const underpayRes = await POST(new Request('https://test.local/api/purchase/verify-payment', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transaction_id: '9003', tx_ref: 'FLW_UNDERPAY_50', plan_id: 'plan-1hr' }),
+  }));
+  assert.equal(underpayRes.status, 400, 'Genuine underpayment must be rejected');
+});
+
+test('Logged-in user wallet top-up and Flutterwave webhook credit full ₦100 (not ₦97) when Flutterwave deducts ₦3 fee', async () => {
+  const schemas = await loadModule('lib/schemas.js', {}, ['walletTopupSchema', 'validateBody']);
+  const userId = '00000000-0000-4000-8000-000000000055';
+  let walletBalance = 0;
+  const txRows = [];
+  let flwVerifyPayload = null;
+
+  const supabaseMock = {
+    from(table) {
+      const filters = [];
+      const q = {
+        select() { return q; },
+        eq(k, v) { filters.push([k, v]); return q; },
+        insert() { return Promise.resolve({ data: null, error: null }); },
+        upsert(row) {
+          const existing = txRows.find(t => t.flw_ref === row.flw_ref);
+          const inserted = existing ? null : { id: `tx-${txRows.length + 1}`, ...row };
+          if (inserted) txRows.push(inserted);
+          return {
+            select() {
+              return {
+                maybeSingle: async () => ({ data: inserted, error: null }),
+              };
+            },
+          };
+        },
+        async maybeSingle() {
+          if (table === 'transactions') {
+            const ref = filters.find(([k]) => k === 'flw_ref')?.[1];
+            return { data: txRows.find(t => t.flw_ref === ref) || null };
+          }
+          if (table === 'wallets') {
+            return { data: { balance: walletBalance } };
+          }
+          if (table === 'profiles') {
+            const id = filters.find(([k]) => k === 'id')?.[1];
+            return { data: id === userId ? { id: userId } : null };
+          }
+          if (table === 'app_settings') {
+            const key = filters.find(([k]) => k === 'key')?.[1];
+            if (key === 'payment_gateway') return { data: { value: { active: 'flutterwave' } } };
+            if (key === 'flutterwave') return { data: { value: { secret_key: 'FLWSECK-test', webhook_secret: 'wh-secret', enabled: true } } };
+          }
+          return { data: null };
+        },
+      };
+      return q;
+    },
+    async rpc(fn, args) {
+      if (fn === 'adjust_wallet_balance') {
+        if (args.p_operation === 'add') walletBalance += Number(args.p_amount);
+        if (args.p_operation === 'deduct') {
+          if (walletBalance < Number(args.p_amount)) return { data: -1, error: null };
+          walletBalance -= Number(args.p_amount);
+        }
+        return { data: walletBalance, error: null };
+      }
+      return { data: null, error: null };
+    },
+  };
+
+  const topupRoute = await loadModule('app/api/wallet/topup/route.js', {
+    ...schemas,
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: supabaseMock,
+    broadcastWalletUpdate: async () => {},
+    fulfillMonnifyPayment: async () => ({}),
+    validateUserAuth: async () => ({ id: userId, email: 'user@example.com' }),
+    userUnauthorizedResponse: msg => Response.json({ error: msg }, { status: 401 }),
+    logger: { financial() {}, getCorrelationId: () => 'cid-topup' },
+    fetch: async () => Response.json({ status: 'success', data: flwVerifyPayload }),
+  }, ['POST']);
+
+  const webhookRoute = await loadModule('app/api/webhook/flutterwave/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: supabaseMock,
+    broadcastWalletUpdate: async () => {},
+    rateLimitWebhook: () => null,
+    fetch: async () => Response.json({ status: 'success', data: flwVerifyPayload }),
+  }, ['POST']);
+
+  // 1. Logged-in user deposits ₦100 via /api/wallet/topup; Flutterwave removes ₦3 fee (amount: 97)
+  flwVerifyPayload = {
+    id: 7001,
+    tx_ref: 'FLW_TOPUP_100_FEE3',
+    status: 'successful',
+    currency: 'NGN',
+    amount: 97,
+    charged_amount: 97,
+    app_fee: 3,
+    amount_settled: 97,
+    meta: { user_id: userId, type: 'wallet_topup', intended_amount: 100 },
+  };
+  const topupRes = await topupRoute.POST(new Request('https://test.local/api/wallet/topup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ amount: 100, user_id: userId, flw_ref: 'FLW_TOPUP_100_FEE3', transaction_id: 7001, gateway: 'flutterwave' }),
+  }));
+  assert.equal(topupRes.status, 200, 'Wallet top-up of ₦100 with ₦3 Flutterwave fee deduction must succeed');
+  const topupJson = await topupRes.json();
+  assert.equal(topupJson.amount, 100);
+  assert.equal(walletBalance, 100, 'Wallet must be credited full ₦100 (not ₦97) so user can buy ₦100 plan');
+
+  // 2. Webhook arrives for a second ₦100 deposit where Flutterwave reports amount: 97, app_fee: 3
+  flwVerifyPayload = {
+    id: 7002,
+    tx_ref: 'FLW_TOPUP_WEBHOOK_100',
+    status: 'successful',
+    currency: 'NGN',
+    amount: 97,
+    charged_amount: 97,
+    app_fee: 3,
+    amount_settled: 97,
+    meta: { user_id: userId, type: 'wallet_topup', intended_amount: 100 },
+  };
+  const whRes = await webhookRoute.POST(new Request('https://test.local/api/webhook/flutterwave', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'verif-hash': 'wh-secret' },
+    body: JSON.stringify({ data: flwVerifyPayload }),
+  }));
+  assert.equal(whRes.status, 200);
+  const whJson = await whRes.json();
+  assert.equal(whJson.amount, 100, 'Webhook must credit full ₦100 (not ₦97)');
+  assert.equal(walletBalance, 200);
+
+  // 3. Webhook with fee pass-through (customer paid ₦103 for a ₦100 deposit) credits exact ₦100 (no over-credit)
+  flwVerifyPayload = {
+    id: 7003,
+    tx_ref: 'FLW_TOPUP_PASSTHROUGH_103',
+    status: 'successful',
+    currency: 'NGN',
+    amount: 103,
+    charged_amount: 103,
+    app_fee: 2.21,
+    amount_settled: 100.79,
+    meta: { user_id: userId, type: 'wallet_topup', intended_amount: 100, gateway_fee: 3 },
+  };
+  const whPassRes = await webhookRoute.POST(new Request('https://test.local/api/webhook/flutterwave', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'verif-hash': 'wh-secret' },
+    body: JSON.stringify({ data: flwVerifyPayload }),
+  }));
+  const whPassJson = await whPassRes.json();
+  assert.equal(whPassJson.amount, 100, 'Webhook must credit intended ₦100 deposit, not over-credit the ₦3 gateway fee');
+  assert.equal(walletBalance, 300);
+
+  // 4. Default scheduler rules must be disabled by default so weekends/nights never cause unconfigured price mismatches
+  const scheduler = await loadModule('lib/scheduler.js', {}, ['DEFAULT_SCHEDULER_RULES', 'getActiveRules', 'applyScheduledPricing']);
+  assert.equal(scheduler.DEFAULT_SCHEDULER_RULES.every(r => r.enabled === false), true, 'Default scheduler rules must be opt-in (disabled by default)');
+  assert.equal(scheduler.getActiveRules(scheduler.DEFAULT_SCHEDULER_RULES, new Date('2026-11-21T10:00:00Z')).length, 0, 'No default discount rule may activate on Saturday');
+  assert.equal(scheduler.applyScheduledPricing({ price: 100 }).effective_price, 100, 'Default scheduled pricing must keep full ₦100 price');
+});
