@@ -1,5 +1,5 @@
 // African Network Wi-Fi Hotspot Service Worker — Offline Resilience & Installability
-const CACHE_NAME = 'asuk-wifi-cache-v1';
+const CACHE_NAME = 'asuk-wifi-cache-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/offline.html',
@@ -38,7 +38,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch: Network-first with cache fallback for pages, Cache-first for static assets
+// Fetch: Network-first with cache fallback for public pages, Cache-first for hashed static assets
 self.addEventListener('fetch', (event) => {
   const request = event.request;
 
@@ -47,18 +47,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip third-party fonts entirely — let the browser handle them.
-  // The SW fetch context has stricter CSP enforcement and these requests
-  // get blocked with "Refused to connect" errors from the SW.
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return;
+  }
+
+  // Never intercept cross-origin requests (Google Fonts, Flutterwave, Monnify, Supabase, etc.)
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // CRITICAL: Never intercept or cache API calls, authenticated requests, or admin console routes.
+  // Prevents stale SW caches (especially in Firefox across deploys) from breaking Super Admin
+  // or exposing authenticated API responses in Cache Storage.
   if (
-    request.url.includes('fonts.googleapis.com') ||
-    request.url.includes('fonts.gstatic.com')
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/super-admin') ||
+    url.pathname.startsWith('/admin') ||
+    request.headers.has('authorization')
   ) {
     return;
   }
 
-  // Next.js static assets: Cache-first
-  if (request.url.includes('/_next/static/')) {
+  // Next.js hashed static assets: Cache-first
+  if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;

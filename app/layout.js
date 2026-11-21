@@ -44,9 +44,11 @@ export default function RootLayout({ children }) {
           {`
             if ('serviceWorker' in navigator) {
               window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/sw.js').catch(function(err) {
-                  console.log('SW registration note:', err.message);
-                });
+                navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+                  .then(function(reg) { reg.update().catch(function() {}); })
+                  .catch(function(err) {
+                    console.log('SW registration note:', err.message);
+                  });
               });
             }
           `}

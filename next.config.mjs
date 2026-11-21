@@ -64,6 +64,14 @@ const nextConfig = {
         ],
       },
       {
+        // Service Worker — always revalidate so browsers immediately pick up cache/bypass fixes
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
         // Webhook route — allow POST from Flutterwave
         source: '/api/webhook/:path*',
         headers: [

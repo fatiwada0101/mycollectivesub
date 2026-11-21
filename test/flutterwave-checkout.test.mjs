@@ -1327,4 +1327,12 @@ test('Reliability: concurrent flutterwave-fulfill returns 409 without double-pro
   assert.ok(statusSrc.includes('removePendingOrder(redirectTxRef)'), 'Status redirect handler must clear localStorage pending order');
   const mwSrc = await read('middleware.js');
   assert.ok(mwSrc.includes("'/api/guest-wallet'"), 'Middleware must rate-limit /api/guest-wallet');
+
+  // Service worker must never intercept /api/, /super-admin, or authenticated requests
+  const swSrc = await read('public/sw.js');
+  assert.ok(swSrc.includes("url.pathname.startsWith('/api/')"), 'Service worker must bypass all /api/ routes');
+  assert.ok(swSrc.includes("url.pathname.startsWith('/super-admin')"), 'Service worker must bypass /super-admin');
+  assert.ok(swSrc.includes("request.headers.has('authorization')"), 'Service worker must bypass authenticated requests');
+  const nextCfgSrc = await read('next.config.mjs');
+  assert.ok(nextCfgSrc.includes("source: '/sw.js'"), 'next.config.mjs must prevent HTTP caching of /sw.js');
 });
