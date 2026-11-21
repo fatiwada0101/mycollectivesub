@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { validateAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth.js';
 import { sanitizeMikroTikConfig } from '@/lib/mikrotik.js';
+import { removeRouterPeerFromVps } from '@/lib/vps-hub.js';
 import { logger } from '@/lib/logger.js';
 
 export async function GET(request) {
@@ -153,6 +154,32 @@ export async function DELETE(request) {
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'Router ID is required' }, { status: 400 });
+    }
+
+    // Best-effort VPS WireGuard peer revocation if this router was zero-touch provisioned
+    try {
+      const { data: existing } = await supabaseAdmin
+        .from('routers')
+        .select('id, port, wg_tunnel_ip, wg_public_key, vps_hub_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (existing?.vps_hub_id && existing?.wg_public_key) {
+        const { data: hub } = await supabaseAdmin
+          .from('vps_hubs')
+          .select('*')
+          .eq('id', existing.vps_hub_id)
+          .maybeSingle();
+        if (hub) {
+          await removeRouterPeerFromVps(hub, {
+            publicKey: existing.wg_public_key,
+            tunnelIp: existing.wg_tunnel_ip,
+            externalPort: existing.port,
+          });
+        }
+      }
+    } catch (vpsErr) {
+      logger.warn('Non-fatal VPS peer cleanup warning during router delete:', { error: vpsErr.message });
     }
 
     const { error } = await supabaseAdmin

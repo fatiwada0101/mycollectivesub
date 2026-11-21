@@ -1,0 +1,43 @@
+{
+  "name": "mycollectivesub-router-connector-desktop",
+  "version": "1.0.0",
+  "description": "Standalone Desktop App for Mikroticket-style Zero-Touch MikroTik Router Onboarding",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:linux": "electron-builder --linux AppImage"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ng.com.mycollectivesub.connector",
+    "productName": "MyCollectiveSub Router Connector",
+    "files": [
+      "main.mjs",
+      "package.json",
+      {
+        "from": "../router-connector",
+        "to": "router-connector",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../lib",
+        "to": "lib",
+        "filter": ["routeros-api.js", "voucher-expiry.js"]
+      }
+    ],
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true
+    }
+  }
+}

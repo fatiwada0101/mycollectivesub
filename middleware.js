@@ -30,6 +30,7 @@ const CSRF_EXEMPT_PREFIXES = [
   '/api/cron',                // Vercel cron (uses CRON_SECRET bearer token)
   '/api/mikrotik/polling',    // MikroTik polling script (uses polling_secret)
   '/api/mikrotik/heartbeat',  // MikroTik heartbeat (uses router secret)
+  '/api/onboarding/',         // Zero-touch router & VPS callbacks (256-bit single-use tokens)
   '/api/settings/public',     // Public read-only settings
   '/api/super-admin/auth',    // Admin login — no csrf cookie exists yet on first login
 ];

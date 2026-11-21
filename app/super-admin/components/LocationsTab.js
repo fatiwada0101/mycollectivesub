@@ -13,6 +13,7 @@ import {
   ExternalLinkIcon,
   ZapIcon,
 } from '../../components/Icons';
+import ZeroTouchHubPanel from './ZeroTouchHubPanel';
 
 function formatLastSeen(ts) {
   if (!ts) return 'Never';
@@ -382,6 +383,17 @@ export default function LocationsTab({
           <span className="sa-kpi-sub">Cross-Location Vouchers Enabled</span>
         </div>
       </div>
+
+      {/* Zero-Touch Router Onboarding & Multi-VPS Hubs */}
+      <ZeroTouchHubPanel
+        adminHeaders={adminHeaders}
+        showToast={showToast}
+        locations={locations}
+        onRouterOnboarded={() => {
+          fetchData();
+          onRouterChange?.();
+        }}
+      />
 
       {/* Action Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '24px 0 16px', flexWrap: 'wrap', gap: '12px' }}>

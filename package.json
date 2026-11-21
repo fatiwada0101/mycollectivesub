@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node test/run-all.js && node --test test/monnify.test.mjs test/voucher-expiry.test.mjs test/flutterwave-checkout.test.mjs",
+    "connector": "node router-connector/server.mjs",
+    "db:migrate": "node --env-file=.env.local scripts/apply-migration.mjs",
+    "test": "node test/run-all.js && node --test test/monnify.test.mjs test/voucher-expiry.test.mjs test/flutterwave-checkout.test.mjs test/zero-touch-onboarding.test.mjs",
     "test:expiry": "node --test test/voucher-expiry.test.mjs",
-    "test:monnify": "node --test test/monnify.test.mjs"
+    "test:monnify": "node --test test/monnify.test.mjs",
+    "test:onboarding": "node --test test/zero-touch-onboarding.test.mjs"
   },
   "imports": {
     "@/*": "./*"

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MyCollectiveSub — Plug &amp; Play Router Connector</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    background: #0b162a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 28px 16px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .hero {
+    background: linear-gradient(135deg, #0b1f3a 0%, #103b73 55%, #0284c7 100%);
+    border-radius: 16px;
+    padding: 22px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 12px 32px rgba(2, 132, 199, 0.25);
+  }
+  .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.16);
+    color: #e0f2fe;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .hero h1 { font-size: 22px; margin-bottom: 6px; color: #fff; }
+  .hero p { font-size: 13.5px; color: #dbeafe; line-height: 1.5; }
+  .defaults {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+  }
+  .chip {
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(186, 230, 253, 0.35);
+    color: #bae6fd;
+    font-size: 11.5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .card {
+    background: #111c33;
+    border: 1px solid #1e3259;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15.5px; color: #f8fafc; margin-bottom: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 5px; font-weight: 600; }
+  input, select {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 9px;
+    border: 1px solid #2b426d;
+    background: #0b1324;
+    color: #f8fafc;
+    font-size: 13.5px;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: #38bdf8; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    color: #fff; font-weight: 700; font-size: 14px;
+    padding: 11px 18px; border-radius: 10px; border: none; cursor: pointer;
+    width: 100%; margin-top: 14px;
+  }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .status-box {
+    margin-top: 14px; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5;
+    display: none;
+  }
+  .status-ok { background: rgba(22, 163, 74, 0.15); border: 1px solid #22c55e; color: #bbf7d0; display: block; }
+  .status-err { background: rgba(220, 38, 38, 0.15); border: 1px solid #ef4444; color: #fecaca; display: block; }
+  .log {
+    margin-top: 12px; background: #070d1a; border: 1px solid #1e293b; border-radius: 10px;
+    padding: 12px; font-family: Consolas, monospace; font-size: 12px; max-height: 280px; overflow-y: auto;
+  }
+  .log-row { margin-bottom: 6px; }
+  .muted { color: #94a3b8; font-size: 12.5px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="badge">Local Zero-Touch Onboarding • Zero SSH • Zero WinBox</div>
+    <h1>MyCollectiveSub Plug &amp; Play Router Connector</h1>
+    <p>Connect your laptop to the MikroTik router's Wi-Fi/LAN, enter the router IP &amp; password below, and this tool automatically registers the router on your VPS Hub and applies all hotspot, expiry, and auto-reconnect settings.</p>
+    <div class="defaults">
+      <span class="chip">✓ Strict First-Login Wall-Clock Expiry v3 (Online &amp; Offline)</span>
+      <span class="chip">✓ 10s Sweep Scheduler</span>
+      <span class="chip">✓ MAC-Cookie Auto-Reconnect (4w2d)</span>
+      <span class="chip">✓ Zero-SSH Multi-VPS WireGuard</span>
+    </div>
+  </div>
+
+  <!-- Step 1: Cloud Sign-In -->
+  <div class="card">
+    <h2>Step 1 — Connect to Your MyCollectiveSub Cloud Dashboard</h2>
+    <p class="muted">Loads your registered VPS Hubs and Locations automatically.</p>
+    <div class="grid">
+      <div>
+        <label>Cloud App URL</label>
+        <input id="cloudUrl" type="url" value="https://www.mycollectivesub.si" placeholder="https://www.mycollectivesub.si" />
+      </div>
+      <div>
+        <label>Super Admin Password</label>
+        <input id="adminPass" type="password" placeholder="Enter Super Admin password" />
+      </div>
+    </div>
+    <button id="loginBtn" class="btn" onclick="cloudLogin()">Connect Cloud &amp; Load VPS Hubs</button>
+    <div id="loginStatus" class="status-box"></div>
+  </div>
+
+  <!-- Step 2: Local MikroTik Onboarding -->
+  <div class="card" id="onboardCard" style="opacity:0.55; pointer-events:none;">
+    <h2>Step 2 — Enter Local MikroTik Router Details (While on Router Wi-Fi)</h2>
+    <p class="muted">Works even on brand-new factory MikroTik routers over port 8728 (Binary API) or REST 443/80.</p>
+    <div class="grid">
+      <div>
+        <label>Router Name (Display &amp; Identity)</label>
+        <input id="routerName" type="text" placeholder="e.g. Kano Branch 2" />
+      </div>
+      <div>
+        <label>Local Router IP</label>
+        <input id="localIp" type="text" value="192.168.88.1" placeholder="192.168.88.1" />
+      </div>
+      <div>
+        <label>Router Admin Username</label>
+        <input id="localUser" type="text" value="admin" />
+      </div>
+      <div>
+        <label>Router Admin Password</label>
+        <input id="localPass" type="password" placeholder="Leave blank if factory default" />
+      </div>
+      <div>
+        <label>Target VPS Hub (Zero-SSH Auto-Register)</label>
+        <select id="vpsHubId"></select>
+      </div>
+      <div>
+        <label>Location / Site (Optional)</label>
+        <select id="locationId"><option value="">— Unassigned —</option></select>
+      </div>
+    </div>
+    <button id="onboardBtn" class="btn" onclick="startOnboarding()">Auto-Configure &amp; Connect Router</button>
+    <div id="onboardStatus" class="status-box"></div>
+    <div id="stepLog" class="log" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+  let adminToken = '';
+
+  async function cloudLogin() {
+    const btn = document.getElementById('loginBtn');
+    const box = document.getElementById('loginStatus');
+    const cloudUrl = document.getElementById('cloudUrl').value.trim();
+    const password = document.getElementById('adminPass').value;
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    box.className = 'status-box';
+
+    try {
+      const res = await fetch('/api/cloud-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cloudUrl, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Login failed');
+
+      adminToken = data.token;
+      const hubSel = document.getElementById('vpsHubId');
+      hubSel.innerHTML = '';
+      if (!data.hubs || data.hubs.length === 0) {
+        hubSel.innerHTML = '<option value="">No VPS Hubs registered yet — add one in Super Admin</option>';
+      } else {
+        for (const h of data.hubs) {
+          const opt = document.createElement('option');
+          opt.value = h.id;
+          opt.textContent = `${h.name} (${h.public_ip}) [${h.status || 'unknown'}]${h.is_default ? ' ★ Default' : ''}`;
+          hubSel.appendChild(opt);
+        }
+      }
+
+      const locSel = document.getElementById('locationId');
+      locSel.innerHTML = '<option value="">— Unassigned —</option>';
+      for (const l of (data.locations || [])) {
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.textContent = l.name;
+        locSel.appendChild(opt);
+      }
+
+      document.getElementById('onboardCard').style.opacity = '1';
+      document.getElementById('onboardCard').style.pointerEvents = 'auto';
+      box.className = 'status-box status-ok';
+      box.textContent = `✓ Connected! Loaded ${data.hubs.length} VPS Hub(s) and ${data.locations.length} Location(s).`;
+    } catch (err) {
+      box.className = 'status-box status-err';
+      box.textContent = `✗ ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Connect Cloud & Load VPS Hubs';
+    }
+  }
+
+  async function startOnboarding() {
+    const btn = document.getElementById('onboardBtn');
+    const box = document.getElementById('onboardStatus');
+    const log = document.getElementById('stepLog');
+    const routerName = document.getElementById('routerName').value.trim();
+    const localIp = document.getElementById('localIp').value.trim();
+    const localUsername = document.getElementById('localUser').value.trim() || 'admin';
+    const localPassword = document.getElementById('localPass').value;
+    const vpsHubId = document.getElementById('vpsHubId').value;
+    const locationId = document.getElementById('locationId').value;
+    const cloudUrl = document.getElementById('cloudUrl').value.trim();
+
+    if (!routerName || !localIp) {
+      box.className = 'status-box status-err';
+      box.textContent = '✗ Please enter both Router Name and Local Router IP.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Configuring Router & VPS Hub (10–20s)...';
+    box.className = 'status-box';
+    log.style.display = 'block';
+    log.innerHTML = '<div class="log-row">⏳ Connecting to local MikroTik and registering with VPS Hub...</div>';
+
+    try {
+      const res = await fetch('/api/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          localIp, localUsername, localPassword, routerName,
+          cloudUrl, adminToken, vpsHubId: vpsHubId || null, locationId: locationId || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Onboarding failed');
+
+      log.innerHTML = (data.steps || []).map((s) =>
+        `<div class="log-row">${s.status === 'done' ? '✅' : '⏳'} [${s.step}] ${s.detail}</div>`
+      ).join('');
+
+      box.className = 'status-box status-ok';
+      box.textContent = `🎉 SUCCESS! "${data.router.name}" is now registered on ${data.vps.public_ip}:${data.vps.external_port} (Tunnel ${data.vps.wg_tunnel_ip}) with MAC-Cookie Auto-Reconnect & Strict First-Login Wall-Clock Expiry v3 active! You can now start generating & selling vouchers immediately.`;
+    } catch (err) {
+      box.className = 'status-box status-err';
+      box.textContent = `✗ ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Auto-Configure & Connect Router';
+    }
+  }
+</script>
+</body>
+</html>

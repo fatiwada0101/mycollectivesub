@@ -1,0 +1,12 @@
+{
+  "appId": "ng.com.mycollectivesub.admin",
+  "appName": "MyCollectiveSub Router Setup",
+  "webDir": "../router-connector",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
