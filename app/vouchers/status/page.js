@@ -447,8 +447,8 @@ function VoucherStatusContent() {
         }} />
 
         {/* Top bar: Plan & Status pill */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+          <div style={{ minWidth: 0 }}>
             <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
               Active Profile
             </span>
@@ -466,7 +466,9 @@ function VoucherStatusContent() {
             color: statusColor,
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 6
+            gap: 6,
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
           }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor }} />
             {statusLabel}
@@ -532,7 +534,9 @@ function VoucherStatusContent() {
           padding: '10px 14px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          gap: 10,
+          flexWrap: 'wrap',
         }}>
           <div>
             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', fontWeight: 800, textTransform: 'uppercase' }}>
@@ -659,7 +663,7 @@ function VoucherStatusContent() {
         border: '1px solid #F0F1F5',
         marginBottom: 16
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '18px' }}>📶</span>
             <div>

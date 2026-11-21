@@ -92,11 +92,11 @@ export default function LandingPage() {
           position: 'sticky',
           top: 0,
           zIndex: 50,
-          background: 'rgba(255, 255, 255, 0.92)',
+          background: 'rgba(255, 255, 255, 0.94)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderBottom: '1px solid #CFE5FF',
-          padding: '10px 20px',
+          padding: '10px 14px',
         }}
       >
         <div
@@ -106,58 +106,57 @@ export default function LandingPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            gap: '10px',
           }}
         >
-          <Link href="/" onClick={() => enableGuestSession()} style={{ textDecoration: 'none' }}>
-            <BrandMark size={34} appName={appName} showSubtext />
+          <Link
+            href="/"
+            onClick={() => enableGuestSession()}
+            style={{ textDecoration: 'none', minWidth: 0, flexShrink: 1 }}
+          >
+            <BrandMark size={30} appName={appName} showSubtext />
           </Link>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              flexShrink: 0,
+            }}
+          >
             <button
               type="button"
               onClick={enterGuestDashboard}
               style={{
-                padding: '8px 14px',
+                padding: '7px 11px',
                 borderRadius: '999px',
                 background: '#FFFFFF',
                 border: '1.5px solid #0088FF',
                 color: '#062B66',
-                fontSize: '13px',
+                fontSize: '12px',
                 fontWeight: 800,
                 cursor: 'pointer',
+                whiteSpace: 'nowrap',
               }}
             >
-              {user ? 'Dashboard' : 'Guest Dashboard'}
+              {user ? 'Dashboard' : 'Guest'}
             </button>
-            <Link
-              href="/packages"
-              style={{
-                padding: '8px 14px',
-                borderRadius: '999px',
-                background: '#EFF6FF',
-                border: '1px solid #BFDBFE',
-                color: '#035EC8',
-                fontSize: '13px',
-                fontWeight: 800,
-                textDecoration: 'none',
-              }}
-            >
-              Data Plans
-            </Link>
             <Link
               href={user ? '/' : '/auth'}
               style={{
-                padding: '8px 18px',
+                padding: '7px 14px',
                 borderRadius: '999px',
                 background: 'linear-gradient(90deg, #062B66 0%, #0088FF 100%)',
                 color: '#FFFFFF',
-                fontSize: '13px',
+                fontSize: '12px',
                 fontWeight: 800,
                 textDecoration: 'none',
                 boxShadow: '0 4px 12px rgba(0, 136, 255, 0.28)',
+                whiteSpace: 'nowrap',
               }}
             >
-              {user ? 'My Account' : 'Sign In'}
+              {user ? 'Account' : 'Sign In'}
             </Link>
           </div>
         </div>

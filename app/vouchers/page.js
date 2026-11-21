@@ -245,8 +245,8 @@ export default function VouchersPage() {
               className="pass-card-modern"
               style={{ padding: '20px' }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
                     {v.profile_name || 'Wi-Fi Hotspot Pass'}
                   </div>
@@ -263,6 +263,8 @@ export default function VouchersPage() {
                     borderRadius: '999px',
                     background: v.is_used ? '#F4F5F8' : '#E6F2FF',
                     color: v.is_used ? '#8E8E93' : '#035EC8',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
                   }}
                 >
                   {v.is_used ? '● Used' : '● Ready to Connect'}
@@ -278,6 +280,8 @@ export default function VouchersPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap',
                 }}
               >
                 <div>

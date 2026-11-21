@@ -604,12 +604,21 @@ export default function HomePage() {
           }} />
 
           {/* Top Row: Chip, Wi-Fi Brand & PIN Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              flexWrap: 'wrap',
+              marginBottom: '20px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: '1 1 auto' }}>
               {/* Gold Chip Graphic */}
               <div style={{
-                width: 32,
-                height: 22,
+                width: 30,
+                height: 21,
                 borderRadius: 5,
                 background: 'linear-gradient(135deg, #FFDF00 0%, #D4AF37 100%)',
                 border: '1px solid rgba(255, 255, 255, 0.4)',
@@ -619,39 +628,51 @@ export default function HomePage() {
                 justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <div style={{ width: 14, height: 9, border: '1px solid rgba(0,0,0,0.3)', borderRadius: 2 }} />
+                <div style={{ width: 13, height: 8, border: '1px solid rgba(0,0,0,0.3)', borderRadius: 2 }} />
               </div>
 
-              <WifiIcon size={18} color="#FFFFFF" />
-              <span style={{ fontSize: '13.5px', fontWeight: 800, letterSpacing: '-0.2px', opacity: 0.95 }}>
-                {appName || 'My Collective Sub'}
+              <WifiIcon size={17} color="#FFFFFF" />
+              <span
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  letterSpacing: '-0.2px',
+                  opacity: 0.95,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {appName || 'MyCollectiveSub'}
               </span>
             </div>
 
             {/* Hotspot PIN / ID Chip */}
             <div
-              onClick={handleCopyPin}
-              title={activeVoucher?.code ? 'Click to copy Hotspot PIN' : 'No active pass'}
+              onClick={activeVoucher?.code ? handleCopyPin : () => router.push('/packages')}
+              title={activeVoucher?.code ? 'Click to copy Hotspot PIN' : 'Tap to buy a Wi-Fi pass'}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                background: 'rgba(255, 255, 255, 0.14)',
+                gap: '5px',
+                padding: '5px 10px',
+                background: 'rgba(255, 255, 255, 0.16)',
                 backdropFilter: 'blur(10px)',
-                borderRadius: '12px',
-                border: '1px solid rgba(255, 255, 255, 0.22)',
+                borderRadius: '10px',
+                border: '1px solid rgba(255, 255, 255, 0.24)',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
               }}
             >
-              <span style={{ fontSize: '10.5px', fontWeight: 800, opacity: 0.75, letterSpacing: '0.5px' }}>
-                {activeVoucher?.code ? 'PIN:' : 'ID:'}
+              <span style={{ fontSize: '10px', fontWeight: 800, opacity: 0.8, letterSpacing: '0.4px' }}>
+                {activeVoucher?.code ? 'PIN:' : 'PASS:'}
               </span>
-              <span style={{ fontSize: '12.5px', fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.8px' }}>
-                {activeVoucher?.code || 'MYCOLLECTIVESUB-WIFI'}
+              <span style={{ fontSize: '11.5px', fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.5px' }}>
+                {activeVoucher?.code || 'GET PIN'}
               </span>
-              <span style={{ fontSize: '12px' }}>{copiedPin ? '✓' : '📋'}</span>
+              <span style={{ fontSize: '11px' }}>{activeVoucher?.code ? (copiedPin ? '✓' : '📋') : '→'}</span>
             </div>
           </div>
 
@@ -1002,58 +1023,59 @@ export default function HomePage() {
             </span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {plans.slice(0, 3).map((plan, idx) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {plans.slice(0, 3).map((plan, idx) => {
+              const isPopular = plan.popular || (!plans.some(p => p.popular) && idx === 0);
+              return (
               <div
                 key={plan.id || idx}
                 style={{
                   background: 'var(--surface, #FFFFFF)',
                   borderRadius: '20px',
                   padding: '16px 18px',
-                  border: '1.5px solid var(--border-light, #CFE5FF)',
+                  border: isPopular ? '1.5px solid #0088FF' : '1.5px solid var(--border-light, #CFE5FF)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  gap: '12px',
                   boxShadow: '0 4px 14px rgba(6, 43, 102, 0.05)',
                   position: 'relative',
                 }}
               >
-                {idx === 0 && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '-9px',
-                    left: '18px',
-                    background: '#0088FF',
-                    color: '#FFFFFF',
-                    fontSize: '10px',
-                    fontWeight: 800,
-                    padding: '2px 8px',
-                    borderRadius: '999px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    boxShadow: '0 2px 6px rgba(0, 136, 255, 0.4)',
-                  }}>
-                    Popular
-                  </span>
-                )}
-
-                <div style={{ marginTop: idx === 0 ? '4px' : '0' }}>
-                  <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary, #062B66)' }}>
-                    {plan.name}
+                <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary, #062B66)' }}>
+                      {plan.name}
+                    </span>
+                    {isPopular && (
+                      <span style={{
+                        background: '#0088FF',
+                        color: '#FFFFFF',
+                        fontSize: '9.5px',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        Popular
+                      </span>
+                    )}
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #64748B)', marginTop: '2px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #64748B)', marginTop: '3px' }}>
                     {plan.duration || 'Unlimited Fast Internet'}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#062B66' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                  <div style={{ fontSize: '15.5px', fontWeight: 900, color: '#062B66', whiteSpace: 'nowrap' }}>
                     {formatPrice(plan.price)}
                   </div>
                   <button
                     onClick={() => handleOpenCheckout(plan)}
                     style={{
-                      padding: '8px 16px',
+                      padding: '8px 15px',
                       borderRadius: '999px',
                       background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
                       color: '#FFFFFF',
@@ -1062,13 +1084,15 @@ export default function HomePage() {
                       border: 'none',
                       cursor: 'pointer',
                       boxShadow: '0 3px 10px rgba(0, 136, 255, 0.28)',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     Get Pass
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
