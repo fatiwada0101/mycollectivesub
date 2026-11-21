@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { getGuestVouchers, enableGuestSession } from '../../lib/guest-vouchers.js';
 import BottomNav from '../components/BottomNav';
 import CheckoutModal from '../components/CheckoutModal';
+import PendingPaymentBanner from '../components/PendingPaymentBanner';
 import RoamingBanner from '../components/RoamingBanner';
 import {
   ChevronLeftIcon,
@@ -198,6 +199,8 @@ export default function PackagesPage() {
 
         <div style={{ width: '40px' }} />
       </div>
+
+      <PendingPaymentBanner showManualRecovery={!user} onVoucherRecovered={() => showToast('✅ Paid pass recovered & saved!')} />
 
       {savedVoucher && (
         <div style={{

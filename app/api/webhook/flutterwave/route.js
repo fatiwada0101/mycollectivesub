@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin, broadcastWalletUpdate } from '@/lib/supabase-server.js';
 import { rateLimitWebhook } from '@/lib/rate-limit.js';
+import { fulfillVerifiedFlutterwaveVoucher } from '@/lib/flutterwave-fulfill.js';
 
 function resolveFlutterwavePaidAmount(flwTx) {
   const amount = Number(flwTx?.amount || 0);
@@ -182,11 +183,38 @@ export async function POST(request) {
       return NextResponse.json({ status: 'ignored', reason: 'invalid amount' });
     }
 
-    // 4. Strictly identify wallet top-up vs voucher purchase
+    // 4. Strictly identify wallet top-up vs direct voucher purchase
     const isWalletTopup = txRef.startsWith('FLW_TOPUP_') || metaType === 'wallet_topup';
 
     if (!isWalletTopup) {
-      // Direct voucher card purchases or other non-topup transactions
+      // Fulfill direct guest / logged-in voucher purchases automatically on the server!
+      // Critical for mobile bank transfers (OPay, PalmPay, Moniepoint) where switching apps
+      // closes or reloads the captive portal before the browser JS callback can fire.
+      const isVoucherPurchase =
+        metaType === 'voucher_purchase' ||
+        !!eventData.meta?.plan_id ||
+        !!eventData.meta?.plan_name ||
+        txRef.startsWith('FLW_');
+
+      if (isVoucherPurchase && typeof fulfillVerifiedFlutterwaveVoucher === 'function') {
+        const fulfilled = await fulfillVerifiedFlutterwaveVoucher(eventData, { tx_ref: txRef });
+        if (fulfilled.ok) {
+          return NextResponse.json({
+            status: 'success',
+            action: fulfilled.idempotent ? 'already_issued' : 'voucher_issued',
+            voucher_code: fulfilled.voucher_code,
+            plan: fulfilled.plan,
+            tx_ref: txRef,
+          });
+        }
+        console.warn(`Webhook voucher fulfillment warning for ${txRef}:`, fulfilled.error);
+        return NextResponse.json({
+          status: 'acknowledged',
+          message: fulfilled.error || 'Voucher fulfillment deferred',
+          tx_ref: txRef,
+        });
+      }
+
       return NextResponse.json({
         status: 'acknowledged',
         message: 'Non-wallet topup event received',

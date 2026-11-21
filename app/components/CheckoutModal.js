@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../../lib/supabase';
 import { createPaymentHeaders } from '../../lib/payment-client.js';
-import { saveGuestVoucher } from '../../lib/guest-vouchers.js';
+import { saveGuestVoucher, savePendingOrder, removePendingOrder, getPendingOrders } from '../../lib/guest-vouchers.js';
 import ReceiptModal from './ReceiptModal';
 import { ReceiptIcon } from './Icons';
 
@@ -126,10 +126,16 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [voucherData, setVoucherData] = useState(null);
   const [pendingMonnifyOrder, setPendingMonnifyOrder] = useState(null);
+  const [pendingFlwOrder, setPendingFlwOrder] = useState(null);
   useEffect(() => {
-    if (!plan?.id) { setPendingMonnifyOrder(null); return; }
+    if (!plan?.id) { setPendingMonnifyOrder(null); setPendingFlwOrder(null); return; }
     try { setPendingMonnifyOrder(JSON.parse(sessionStorage.getItem(`monnify-order-${plan.id}`) || 'null')); } catch {}
-  }, [plan?.id]);
+    try {
+      const orders = getPendingOrders();
+      const match = orders.find(o => o.plan_id === plan.id) || orders[0] || null;
+      setPendingFlwOrder(match);
+    } catch {}
+  }, [plan?.id, isOpen]);
   const [copied, setCopied] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [autoRenew, setAutoRenew] = useState(false);
@@ -319,6 +325,59 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       setErrorMessage(err.message);
       setStep('error');
       processingRef.current = false; // allow retry
+    }
+  };
+
+  // Recover a pending Flutterwave transfer (e.g. after switching to OPay / PalmPay / Moniepoint)
+  const recoverFlutterwaveOrder = async (orderOverride = null, silent = false) => {
+    const target = orderOverride || pendingFlwOrder;
+    if (!target?.tx_ref) return;
+    if (!silent) {
+      processingRef.current = true;
+      setStep('processing');
+      setLoadingText('Checking your Flutterwave bank transfer...');
+      setErrorMessage('');
+    }
+    try {
+      const res = await fetch(`/api/purchase/check-tx?tx_ref=${encodeURIComponent(target.tx_ref)}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && data?.status === 'fulfilled' && data.voucher_code) {
+        const activeV = {
+          code: data.voucher_code,
+          plan: data.plan || target.plan_name || plan.name,
+          duration: data.duration || target.duration || plan.duration,
+          price: Number(data.price || target.price || plan.price),
+          purchasedAt: Date.now(),
+          isUsed: false,
+          isFallback: !!data.is_fallback,
+        };
+        if (typeof saveGuestVoucher === 'function') {
+          saveGuestVoucher(activeV);
+        }
+        try { sessionStorage.removeItem(`flw-order-${target.tx_ref}`); } catch {}
+        removePendingOrder(target.tx_ref);
+        setPendingFlwOrder(null);
+        setVoucherData({
+          code: data.voucher_code,
+          plan: activeV.plan,
+          duration: activeV.duration,
+          isFallback: !!data.is_fallback,
+        });
+        setStep('success');
+        onSuccess?.();
+        return;
+      }
+      if (!silent) {
+        setErrorMessage(data?.error || 'Transfer not confirmed by Flutterwave yet. Wait 10 seconds after sending from OPay/PalmPay/Moniepoint and tap Check Payment again.');
+        setStep('review');
+      }
+    } catch (err) {
+      if (!silent) {
+        setErrorMessage(err.message || 'Could not check payment status');
+        setStep('review');
+      }
+    } finally {
+      if (!silent) processingRef.current = false;
     }
   };
 
@@ -547,18 +606,31 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       : 0;
     const flwCheckoutAmount = price + flwGatewayFee;
 
+    const pendingOrderPayload = {
+      tx_ref: txRef,
+      plan_id: plan.id,
+      plan_name: plan.name,
+      price: Number(plan.price),
+      duration: plan.duration,
+      email: user?.email || guestEmail,
+      phone: guestPhone || '',
+      user_id: user?.id || null,
+      auto_renew: !!autoRenew,
+      createdAt: Date.now(),
+    };
     try {
-      sessionStorage.setItem(`flw-order-${txRef}`, JSON.stringify({
-        tx_ref: txRef,
-        plan_id: plan.id,
-        plan_name: plan.name,
-        price: Number(plan.price),
-        duration: plan.duration,
-        email: user?.email || guestEmail,
-        phone: guestPhone || '',
-        user_id: user?.id || null,
-        auto_renew: !!autoRenew,
-      }));
+      sessionStorage.setItem(`flw-order-${txRef}`, JSON.stringify(pendingOrderPayload));
+    } catch {}
+    try {
+      if (typeof savePendingOrder === 'function') {
+        savePendingOrder(pendingOrderPayload);
+      } else if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('mycollectivesub_pending_flw_orders');
+        const arr = raw ? JSON.parse(raw) : [];
+        const next = [pendingOrderPayload, ...(Array.isArray(arr) ? arr.filter(x => x?.tx_ref !== txRef) : [])].slice(0, 6);
+        localStorage.setItem('mycollectivesub_pending_flw_orders', JSON.stringify(next));
+      }
+      if (typeof setPendingFlwOrder === 'function') setPendingFlwOrder(pendingOrderPayload);
     } catch {}
 
     try {
@@ -621,6 +693,10 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
               }
 
               try { sessionStorage.removeItem(`flw-order-${txRef}`); } catch {}
+              try {
+                if (typeof removePendingOrder === 'function') removePendingOrder(txRef);
+                if (typeof setPendingFlwOrder === 'function') setPendingFlwOrder(null);
+              } catch {}
 
               const activeV = {
                 code: verifyData.voucher_code,
@@ -665,6 +741,11 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
           if (!verificationStarted) {
             processingRef.current = false;
             setStep('review');
+            // Background check: if the user switched to OPay/PalmPay/Moniepoint and closed the popup
+            // after sending a transfer, auto-claim the voucher as soon as Flutterwave confirms it!
+            if (typeof recoverFlutterwaveOrder === 'function') {
+              recoverFlutterwaveOrder(pendingOrderPayload, true);
+            }
           }
         },
       });
@@ -686,6 +767,45 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
           </div>
           <button className="checkout-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
+
+        {pendingFlwOrder && step !== 'processing' && step !== 'success' && (
+          <div style={{
+            margin: '12px 20px 0',
+            padding: '12px 14px',
+            borderRadius: '14px',
+            background: '#FFFBEB',
+            border: '1.5px solid #FCD34D',
+            color: '#92400E',
+            fontSize: '12.5px',
+          }}>
+            <div style={{ fontWeight: 800, marginBottom: '6px' }}>
+              ⏳ Already sent transfer for {pendingFlwOrder.plan_name} (₦{Number(pendingFlwOrder.price || 0).toLocaleString()})?
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ padding: '7px 14px', fontSize: '12px' }}
+                onClick={() => recoverFlutterwaveOrder(pendingFlwOrder, false)}
+              >
+                ✓ Verify &amp; Claim Voucher
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '7px 12px', fontSize: '12px', borderRadius: '999px',
+                  border: '1px solid #F59E0B', background: 'transparent', color: '#92400E', cursor: 'pointer', fontWeight: 700,
+                }}
+                onClick={() => {
+                  removePendingOrder(pendingFlwOrder.tx_ref);
+                  setPendingFlwOrder(null);
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {pendingMonnifyOrder && step !== 'processing' && step !== 'success' && (
           <div className="checkout-security-notice">

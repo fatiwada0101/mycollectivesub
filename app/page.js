@@ -9,6 +9,7 @@ import { enableGuestSession, getGuestVouchers, hasGuestOrVoucherSession } from '
 import BottomNav from './components/BottomNav';
 import SideDrawer from './components/SideDrawer';
 import CheckoutModal from './components/CheckoutModal';
+import PendingPaymentBanner from './components/PendingPaymentBanner';
 import PwaInstallBanner from './components/PwaInstallBanner';
 import BrandMark from './components/BrandMark';
 import {
@@ -767,6 +768,9 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Auto-Recover Pending Guest Flutterwave Payments ── */}
+      <PendingPaymentBanner onVoucherRecovered={() => { syncActiveVoucher(); showToast('✅ Payment confirmed! Your Wi-Fi PIN is ready.'); }} />
 
       {/* ── Active / Saved Voucher Persistence Widget ── */}
       {(isPassActive || savedVouchers.length > 0) && activeVoucher && (

@@ -604,3 +604,155 @@ test('Logged-in user wallet top-up and Flutterwave webhook credit full ₦100 (n
   assert.equal(scheduler.getActiveRules(scheduler.DEFAULT_SCHEDULER_RULES, new Date('2026-11-21T10:00:00Z')).length, 0, 'No default discount rule may activate on Saturday');
   assert.equal(scheduler.applyScheduledPricing({ price: 100 }).effective_price, 100, 'Default scheduled pricing must keep full ₦100 price');
 });
+
+test('Guest localStorage pending order recovery and server-side webhook voucher fulfillment work without browser callback', async () => {
+  const localMap = new Map();
+  const sessionMap = new Map();
+  const mockStorage = (map) => ({
+    getItem: k => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: k => map.delete(k),
+  });
+
+  // 1. Verify pending order persistence across app-switch / refresh in localStorage
+  const guestLib = await loadModule('lib/guest-vouchers.js', {
+    localStorage: mockStorage(localMap),
+    sessionStorage: mockStorage(sessionMap),
+    Event: class MockEvent { constructor(type) { this.type = type; } },
+    window: { dispatchEvent() {} },
+  }, ['savePendingOrder', 'getPendingOrders', 'removePendingOrder']);
+
+  guestLib.savePendingOrder({ tx_ref: 'FLW_OPAY_GUEST_1', plan_id: 'plan-1hr', plan_name: '3 Hour Fast Pass', price: 100 });
+  assert.equal(guestLib.getPendingOrders().length, 1);
+  assert.equal(guestLib.getPendingOrders()[0].tx_ref, 'FLW_OPAY_GUEST_1');
+  guestLib.removePendingOrder('FLW_OPAY_GUEST_1');
+  assert.equal(guestLib.getPendingOrders().length, 0);
+
+  // 2. Verify Flutterwave webhook automatically fulfills guest voucher_purchase on server
+  let fulfilledRef = null;
+  const webhookRoute = await loadModule('app/api/webhook/flutterwave/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: {
+      from() {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          maybeSingle: async () => ({ data: { value: { secret_key: 'FLWSECK-test', webhook_secret: 'wh-secret' } } }),
+        };
+      },
+    },
+    broadcastWalletUpdate: async () => {},
+    rateLimitWebhook: () => null,
+    fulfillVerifiedFlutterwaveVoucher: async (flwTx, opts) => {
+      fulfilledRef = opts.tx_ref;
+      return { ok: true, idempotent: false, voucher_code: '88123', plan: '3 Hour Fast Pass', price: 100, tx_ref: opts.tx_ref };
+    },
+    fetch: async () => Response.json({
+      status: 'success',
+      data: {
+        id: 2121176611,
+        tx_ref: 'FLW_OPAY_GUEST_1',
+        status: 'successful',
+        currency: 'NGN',
+        amount: 100,
+        charged_amount: 100,
+        app_fee: 2,
+        amount_settled: 97.85,
+        meta: { type: 'voucher_purchase', plan_id: 'plan-1hr', plan_name: '3 Hour Fast Pass' },
+      },
+    }),
+  }, ['POST']);
+
+  const res = await webhookRoute.POST(new Request('https://test.local/api/webhook/flutterwave', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'verif-hash': 'wh-secret' },
+    body: JSON.stringify({ data: { id: 2121176611, tx_ref: 'FLW_OPAY_GUEST_1', status: 'successful', amount: 100, currency: 'NGN', meta: { type: 'voucher_purchase', plan_id: 'plan-1hr' } } }),
+  }));
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.action, 'voucher_issued');
+  assert.equal(body.voucher_code, '88123');
+  assert.equal(fulfilledRef, 'FLW_OPAY_GUEST_1');
+});
+
+test('Super Admin direct wallet funding uses exact 3-arg adjust_wallet_balance RPC, logs ledger, broadcasts update, and supports email lookup', async () => {
+  const targetId = '00000000-0000-4000-8000-000000000088';
+  let walletBalance = 250;
+  const rpcCalls = [];
+  const insertedTxs = [];
+  const broadcasts = [];
+
+  const usersRoute = await loadModule('app/api/super-admin/users/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    validateAdminAuth: async () => true,
+    unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
+    broadcastWalletUpdate: async (uid, bal) => broadcasts.push({ uid, bal }),
+    logChange: async () => {},
+    supabaseAdmin: {
+      auth: { admin: { listUsers: async () => ({ data: { users: [{ id: targetId, email: 'customer@example.com' }] } }) } },
+      async rpc(fn, args) {
+        rpcCalls.push({ fn, args });
+        assert.deepEqual(Object.keys(args).sort(), ['p_amount', 'p_operation', 'p_user_id'], 'adjust_wallet_balance must only receive exact 3 RPC parameters');
+        if (args.p_operation === 'add') {
+          walletBalance += args.p_amount;
+          return { data: walletBalance, error: null };
+        }
+        if (args.p_operation === 'deduct') {
+          if (walletBalance < args.p_amount) return { data: -1, error: null };
+          walletBalance -= args.p_amount;
+          return { data: walletBalance, error: null };
+        }
+        throw new Error(`Invalid operation: ${args.p_operation}`);
+      },
+      from(table) {
+        return {
+          insert(row) {
+            if (table === 'transactions') insertedTxs.push(row);
+            return {
+              select() { return { single: async () => ({ data: { id: 'tx-admin-1', ...row } }) }; },
+              then: resolve => resolve({ data: row, error: null }),
+            };
+          },
+        };
+      },
+    },
+  }, ['POST']);
+
+  // 1. Direct funding by email
+  const fundRes = await usersRoute.POST(new Request('https://test.local/api/super-admin/users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'customer@example.com', amount: 500, operation: 'add', note: 'Cash deposit' }),
+  }));
+  assert.equal(fundRes.status, 200);
+  const fundJson = await fundRes.json();
+  assert.equal(fundJson.new_balance, 750);
+  assert.equal(insertedTxs[0].type, 'wallet_topup');
+  assert.equal(insertedTxs[0].amount, 500);
+  assert.equal(broadcasts[0].bal, 750);
+
+  // 2. Debit uses 'deduct' (not broken 'subtract') and rejects overdraft cleanly
+  const debitRes = await usersRoute.POST(new Request('https://test.local/api/super-admin/users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ user_id: targetId, amount: 200, operation: 'subtract', note: 'Reversal' }),
+  }));
+  assert.equal(debitRes.status, 200);
+  assert.equal((await debitRes.json()).new_balance, 550);
+  assert.equal(rpcCalls[1].args.p_operation, 'deduct');
+
+  const overdraftRes = await usersRoute.POST(new Request('https://test.local/api/super-admin/users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ user_id: targetId, amount: 9999, operation: 'subtract' }),
+  }));
+  assert.equal(overdraftRes.status, 400);
+
+  // 3. Verify OPay, Moniepoint, and PalmPay mobile API domains are in WalledGardenTab and auto-setup
+  const wgSrc = await read('app/super-admin/components/WalledGardenTab.js');
+  const autoSetupSrc = await read('app/api/mikrotik/auto-setup/route.js');
+  for (const domain of ['*opaycheckout.com', '*opay-inc.com', '*palmpay-inc.com', '*transsnet.com', '*moniepoint.com', '*moniepoint.ng']) {
+    assert.ok(wgSrc.includes(domain), `WalledGardenTab must include ${domain}`);
+    assert.ok(autoSetupSrc.includes(domain), `auto-setup must include ${domain}`);
+  }
+});

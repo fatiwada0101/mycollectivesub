@@ -390,10 +390,13 @@ export async function POST(request) {
           payment_method: 'card',
           flw_ref: effectiveTxRef,
           metadata: {
+            plan_id: planData.id || resolvedPlanId || null,
             plan_name: effectivePlanName,
             voucher_code: code,
             duration: effectiveDuration || null,
             gateway: 'flutterwave',
+            customer_email: (effectiveEmail || '').trim().toLowerCase() || null,
+            customer_phone: effectivePhone || null,
             charged_amount: Number(flwTx.charged_amount || paidAmount || authoritativePrice),
             app_fee: Number(flwTx.app_fee || 0),
             amount_settled: Number(flwTx.amount_settled || authoritativePrice),

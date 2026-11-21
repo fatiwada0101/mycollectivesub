@@ -7,6 +7,7 @@ import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../../lib/supabase';
 import { getGuestVouchers, enableGuestSession } from '../../lib/guest-vouchers.js';
 import BottomNav from '../components/BottomNav';
+import PendingPaymentBanner from '../components/PendingPaymentBanner';
 import ReceiptModal from '../components/ReceiptModal';
 import {
   ChevronLeftIcon,
@@ -190,6 +191,8 @@ export default function VouchersPage() {
           </div>
         )}
       </div>
+
+      <PendingPaymentBanner showManualRecovery={true} onVoucherRecovered={() => showToast('✅ Paid pass recovered & added to your passes!')} />
 
       {/* Vouchers List */}
       {loading ? (

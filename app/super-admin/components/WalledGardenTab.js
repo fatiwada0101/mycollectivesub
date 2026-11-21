@@ -94,14 +94,45 @@ export default function WalledGardenTab({
     { domain: '*.threatmetrix.com', label: 'ThreatMetrix Risk Authentication' },
   ];
 
+  const NIGERIAN_FINTECH_APPS = [
+    // OPay Mobile App & Cashier APIs
+    { domain: '*opayweb.com', label: 'OPay Web & Cashier', category: 'bank' },
+    { domain: '*opaycheckout.com', label: 'OPay Live Checkout API', category: 'bank' },
+    { domain: '*opay-inc.com', label: 'OPay Core App Backend', category: 'bank' },
+    { domain: '*opay.com', label: 'OPay Mobile App', category: 'bank' },
+    { domain: '*operapay.com', label: 'OPay Services', category: 'bank' },
+    { domain: '*opayng.com', label: 'OPay Nigeria', category: 'bank' },
+    { domain: '*opay.ng', label: 'OPay NG Domain', category: 'bank' },
+    { domain: '*opay-cloud.com', label: 'OPay Cloud Assets', category: 'bank' },
+    { domain: '*opaystatic.com', label: 'OPay Static CDN', category: 'bank' },
+    // Moniepoint Mobile App & Infrastructure
+    { domain: '*moniepoint.com', label: 'Moniepoint App & Web', category: 'bank' },
+    { domain: '*moniepoint.ng', label: 'Moniepoint Nigeria', category: 'bank' },
+    { domain: '*teamapt.com', label: 'Moniepoint Core Infrastructure', category: 'bank' },
+    { domain: '*monnify.com', label: 'Monnify / Moniepoint Switch', category: 'bank' },
+    // PalmPay Mobile App & Transsnet Gateway
+    { domain: '*palmpay-inc.com', label: 'PalmPay Production API Gateway', category: 'bank' },
+    { domain: '*palmpay.com', label: 'PalmPay Core & Web', category: 'bank' },
+    { domain: '*palmpay.co', label: 'PalmPay App Services', category: 'bank' },
+    { domain: '*palmpay.app', label: 'PalmPay Mobile App', category: 'bank' },
+    { domain: '*palmpay.ng', label: 'PalmPay Nigeria', category: 'bank' },
+    { domain: '*palmpayapp.com', label: 'PalmPay App CDN', category: 'bank' },
+    { domain: '*transsnet.com', label: 'PalmPay Transsnet Backend', category: 'bank' },
+    { domain: '*transspay.net', label: 'PalmPay TranssPay Switch', category: 'bank' },
+    { domain: '*transsnetfinancial.com', label: 'PalmPay Transsnet Financial', category: 'bank' },
+    // Mobile Bank App Auth / OTP / Anti-Bot Dependencies
+    { domain: 'fcm.googleapis.com', label: 'Bank App Push / OTP', category: 'security' },
+    { domain: 'firebaseinstallations.googleapis.com', label: 'Bank App Init', category: 'security' },
+    { domain: 'firebaseremoteconfig.googleapis.com', label: 'Bank App Config', category: 'security' },
+    { domain: 'identitytoolkit.googleapis.com', label: 'Bank App Auth', category: 'security' },
+    { domain: 'securetoken.googleapis.com', label: 'Bank App Session Token', category: 'security' },
+    { domain: 'www.recaptcha.net', label: 'Bank App Verification', category: 'security' },
+    { domain: 'www.gstatic.com', label: 'Bank Verification Assets', category: 'security' },
+    { domain: 'challenges.cloudflare.com', label: 'Bank API Verification', category: 'security' },
+  ];
+
   const NIGERIAN_BANKS = [
-    { domain: '*.opayweb.com', label: 'OPay Web Portal' },
-    { domain: '*.opay.com', label: 'OPay Mobile & API' },
-    { domain: '*.operapay.com', label: 'OPay Services' },
-    { domain: '*.palmpay.com', label: 'PalmPay Core API' },
-    { domain: '*.palmpay.co', label: 'PalmPay App Services' },
-    { domain: '*.moniepoint.com', label: 'Moniepoint Banking Portal' },
-    { domain: '*.teamapt.com', label: 'Moniepoint Core Infrastructure' },
+    ...NIGERIAN_FINTECH_APPS,
     { domain: '*.kuda.com', label: 'Kuda Bank Web & App' },
     { domain: '*.kudabank.com', label: 'Kuda Bank API Services' },
     { domain: '*.gtbank.com', label: 'GTBank (Guaranty Trust Bank)' },
@@ -319,27 +350,50 @@ export default function WalledGardenTab({
                     Enable all Nigerian commercial banks, digital fintechs (OPay, PalmPay, Moniepoint, Kuda), payment switches (Paystack, Flutterwave, Interswitch, Remita), and hidden 3D Secure / ACS verification links (Mastercard, Visa, Verve, CardinalCommerce) so all users can make payments and use bank apps freely before Wi-Fi login.
                   </p>
                 </div>
-                <button
-                  className="sa-btn-primary"
-                  style={{
-                    padding: '12px 24px',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    borderRadius: 12,
-                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                    boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
-                    border: '1px solid rgba(255, 255, 255, 0.25)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                  onClick={handleActivateAllBypass}
-                  disabled={wgSyncing}
-                >
-                  <span>⚡</span>
-                  {wgSyncing ? 'Provisioning Router...' : 'Activate All Banks & Gateways (1-Click)'}
-                </button>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    className="sa-btn-primary"
+                    style={{
+                      padding: '12px 18px',
+                      fontSize: 13.5,
+                      fontWeight: 800,
+                      borderRadius: 12,
+                      background: '#FFFFFF',
+                      color: '#062B66',
+                      border: '1px solid rgba(255, 255, 255, 0.45)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                    onClick={() => handleBulkAddWalledGarden(NIGERIAN_FINTECH_APPS, 'OPay, Moniepoint & PalmPay')}
+                    disabled={wgSyncing}
+                  >
+                    <span>🏦</span>
+                    {wgSyncing ? 'Provisioning...' : 'Free OPay, Moniepoint & PalmPay (1-Click)'}
+                  </button>
+                  <button
+                    className="sa-btn-primary"
+                    style={{
+                      padding: '12px 24px',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      borderRadius: 12,
+                      background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                      boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
+                      border: '1px solid rgba(255, 255, 255, 0.25)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                    onClick={handleActivateAllBypass}
+                    disabled={wgSyncing}
+                  >
+                    <span>⚡</span>
+                    {wgSyncing ? 'Provisioning Router...' : 'Activate All Banks & Gateways (1-Click)'}
+                  </button>
+                </div>
               </div>
             </div>
 

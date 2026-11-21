@@ -524,22 +524,38 @@ function WalletContent() {
           <p style={{ margin: 0, fontSize: '13px', color: '#4B5563', lineHeight: 1.5 }}>
             To keep a persistent wallet balance and enjoy 1-click Wi-Fi pass purchases across all your devices, please create an account or sign in.
           </p>
-          <button
-            onClick={() => router.push('/auth')}
-            style={{
-              alignSelf: 'flex-start',
-              background: 'var(--dock-bg, #141417)',
-              color: '#FFFFFF',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '8px 16px',
-              fontSize: '12px',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            Sign In / Register →
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => router.push('/auth')}
+              style={{
+                background: 'var(--dock-bg, #141417)',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '8px 16px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Sign In / Register →
+            </button>
+            <button
+              onClick={() => router.push('/packages')}
+              style={{
+                background: '#FFFFFF',
+                color: '#035EC8',
+                border: '1.5px solid #0088FF',
+                borderRadius: '12px',
+                padding: '8px 16px',
+                fontSize: '12px',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              Buy Pass Directly as Guest →
+            </button>
+          </div>
         </div>
       )}
 

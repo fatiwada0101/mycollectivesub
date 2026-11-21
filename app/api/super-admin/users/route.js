@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server.js';
-import { supabaseAdmin } from '@/lib/supabase-server.js';
+import { supabaseAdmin, broadcastWalletUpdate } from '@/lib/supabase-server.js';
 import { validateAdminAuth, unauthorizedResponse } from '@/lib/admin-auth.js';
+import { logChange } from '@/lib/changeHistory.js';
 
 export async function GET(request) {
   if (!(await validateAdminAuth(request))) return unauthorizedResponse();
@@ -102,38 +103,121 @@ export async function GET(request) {
   }
 }
 
-// POST — Admin manual wallet adjustment for customer support
+// POST — Admin direct wallet funding / debit for registered customers
 export async function POST(request) {
   if (!(await validateAdminAuth(request))) return unauthorizedResponse();
 
   try {
     const body = await request.json();
-    const { user_id, amount, operation, note } = body;
+    const { user_id, email, amount, operation = 'add', note } = body;
 
-    if (!user_id || !amount || !operation) {
-      return NextResponse.json({ error: 'user_id, amount, and operation (add/subtract) are required' }, { status: 400 });
+    let targetUserId = user_id || null;
+    let targetEmail = (email || '').trim().toLowerCase();
+
+    if (!targetUserId && targetEmail) {
+      const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+      const matched = (authData?.users || []).find(
+        (u) => (u.email || '').trim().toLowerCase() === targetEmail
+      );
+      if (matched?.id) {
+        targetUserId = matched.id;
+      }
     }
 
-    const numAmount = Math.abs(Number(amount));
-    if (isNaN(numAmount) || numAmount <= 0) {
-      return NextResponse.json({ error: 'Valid positive amount required' }, { status: 400 });
+    if (!targetUserId) {
+      return NextResponse.json({ error: 'Customer account not found (provide valid user_id or registered email)' }, { status: 400 });
     }
 
-    // Call atomic wallet adjustment RPC
-    const { data: newBalance, error } = await supabaseAdmin.rpc('adjust_wallet_balance', {
-      p_user_id: user_id,
+    const numAmount = Math.round(Math.abs(Number(amount)) * 100) / 100;
+    if (!Number.isFinite(numAmount) || numAmount <= 0 || numAmount > 10_000_000) {
+      return NextResponse.json({ error: 'Valid positive amount (₦1 – ₦10,000,000) is required' }, { status: 400 });
+    }
+
+    const isDebit = operation === 'subtract' || operation === 'deduct';
+    const rpcOp = isDebit ? 'deduct' : 'add';
+
+    // Call atomic wallet adjustment RPC (exact 3-argument signature: p_user_id, p_amount, p_operation)
+    const { data: rpcResult, error } = await supabaseAdmin.rpc('adjust_wallet_balance', {
+      p_user_id: targetUserId,
       p_amount: numAmount,
-      p_operation: operation === 'subtract' ? 'subtract' : 'add',
-      p_ref: `ADMIN_ADJ_${Date.now()}`,
-      p_desc: note || `Admin manual adjustment (${operation === 'subtract' ? 'Debit' : 'Credit'})`,
+      p_operation: rpcOp,
     });
 
     if (error) throw error;
 
+    const newBalance = Number(rpcResult);
+    if (isDebit && newBalance < 0) {
+      return NextResponse.json({
+        error: 'Insufficient customer wallet balance for this debit amount.',
+      }, { status: 400 });
+    }
+
+    const adminRef = `ADMIN_${isDebit ? 'DEBIT' : 'FUND'}_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const cleanNote = String(note || (isDebit ? 'Admin wallet debit' : 'Direct wallet funding by Admin')).trim().slice(0, 300);
+
+    // Record ledger transaction so funding shows in customer wallet history & admin analytics
+    let insertedTx = null;
+    try {
+      const { data: txData } = await supabaseAdmin
+        .from('transactions')
+        .insert({
+          user_id: targetUserId,
+          type: isDebit ? 'admin_debit' : 'wallet_topup',
+          amount: numAmount,
+          status: 'successful',
+          payment_method: 'admin_manual',
+          flw_ref: adminRef,
+          metadata: {
+            funded_by: 'super_admin',
+            operation: rpcOp,
+            note: cleanNote,
+          },
+        })
+        .select('id, user_id, amount, flw_ref, status, created_at')
+        .single();
+      insertedTx = txData || null;
+    } catch (txErr) {
+      console.warn('Admin wallet adjustment transaction log warning:', txErr?.message || txErr);
+    }
+
+    // Notify customer in-app
+    try {
+      await supabaseAdmin.from('notifications').insert({
+        user_id: targetUserId,
+        title: isDebit ? 'Wallet Adjusted by Admin' : 'Wallet Funded by Admin 💰',
+        message: isDebit
+          ? `₦${numAmount.toLocaleString()} was debited from your wallet (${cleanNote}). New balance: ₦${newBalance.toLocaleString()}.`
+          : `₦${numAmount.toLocaleString()} has been added to your wallet (${cleanNote}). New balance: ₦${newBalance.toLocaleString()}.`,
+        type: isDebit ? 'info' : 'wallet_credit',
+      });
+    } catch {}
+
+    // Broadcast live balance update to user's open tabs immediately
+    try {
+      await broadcastWalletUpdate(targetUserId, newBalance, {
+        amount: isDebit ? -numAmount : numAmount,
+        flw_ref: adminRef,
+        transaction: insertedTx,
+      });
+    } catch {}
+
+    // Audit trail
+    try {
+      await logChange({
+        category: 'finance',
+        action: isDebit ? 'wallet_debit' : 'wallet_credit',
+        summary: `Admin ${isDebit ? 'debited' : 'funded'} ₦${numAmount.toLocaleString()} (${targetEmail || targetUserId}): ${cleanNote}`,
+        beforeState: {},
+        afterState: { user_id: targetUserId, amount: numAmount, operation: rpcOp, new_balance: newBalance, ref: adminRef },
+        metadata: { user_id: targetUserId, ref: adminRef, note: cleanNote },
+      });
+    } catch {}
+
     return NextResponse.json({
       success: true,
       new_balance: newBalance,
-      message: `Successfully ${operation === 'subtract' ? 'debited' : 'credited'} ₦${numAmount}. New balance: ₦${newBalance}`,
+      reference: adminRef,
+      message: `Successfully ${isDebit ? 'debited' : 'funded'} ₦${numAmount.toLocaleString()}. New balance: ₦${newBalance.toLocaleString()}`,
     });
   } catch (error) {
     console.error('Admin wallet adjustment error:', error);
