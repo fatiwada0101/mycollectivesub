@@ -3255,6 +3255,7 @@ input, select, textarea {
 /* ── Portal Shell & Layout ── */
 .sa-shell {
   display: flex;
+  align-items: flex-start;
   min-height: 100vh;
   background: linear-gradient(180deg, #F4F9FF 0%, #EAF3FF 100%);
   color: #062B66;
@@ -3263,6 +3264,10 @@ input, select, textarea {
 
 /* ── Deep Navy Sidebar (Flyer Matched) ── */
 .sa-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
   width: 270px;
   background: linear-gradient(180deg, #062B66 0%, #041E4A 100%);
   display: flex;
@@ -3273,6 +3278,7 @@ input, select, textarea {
   box-shadow: 4px 0 24px rgba(6, 43, 102, 0.12);
   transition: width 0.25s ease;
   overflow: hidden;
+  z-index: 40;
 }
 
 .sa-sidebar.collapsed {
@@ -3334,6 +3340,7 @@ input, select, textarea {
   padding: 8px 10px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 20px;
+  flex-shrink: 0;
 }
 
 .sa-brand-icon-box {
@@ -3371,20 +3378,26 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 4px;
   /* subtle scrollbar */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.12) transparent;
+  scrollbar-color: rgba(255,255,255,0.22) transparent;
 }
 
 .sa-nav-menu::-webkit-scrollbar {
-  width: 4px;
+  width: 5px;
 }
 .sa-nav-menu::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.22);
   border-radius: 4px;
+}
+.sa-nav-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.38);
 }
 .sa-nav-menu::-webkit-scrollbar-track {
   background: transparent;
@@ -3447,6 +3460,7 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .sa-router-pill-status {
@@ -3498,7 +3512,7 @@ input, select, textarea {
 /* ── Main Content Container ── */
 .sa-main-content {
   flex: 1;
-  overflow-y: auto;
+  min-width: 0;
   padding: 32px 40px 60px;
   max-width: 1440px;
 }
@@ -4588,12 +4602,12 @@ input, select, textarea {
     left: -280px;
     width: 260px;
     height: 100vh;
+    height: 100dvh;
     z-index: 99;
     transition: left 0.3s ease;
     box-shadow: 4px 0 24px rgba(0,0,0,0.2);
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* allow inner flex layout to still work */
+    overflow: hidden;
+    /* allow inner flex layout (.sa-nav-menu) to scroll independently */
     display: flex;
     flex-direction: column;
   }
