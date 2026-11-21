@@ -4,6 +4,7 @@ import { validateAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth.j
 import {
   maskVpsHub,
   normalizeProvisionerUrl,
+  assertSafePublicProvisionerUrl,
   testVpsHubConnection,
   suggestNextVpsSubnet,
   parseCidrSubnet,
@@ -13,6 +14,8 @@ import {
   DEFAULT_MAX_ROUTERS_PER_HUB,
 } from '@/lib/vps-hub.js';
 import { logger } from '@/lib/logger.js';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isMissingTableError(err) {
   const msg = String(err?.message || '').toLowerCase();
@@ -90,6 +93,12 @@ export async function POST(request) {
         { success: false, error: 'name, public_ip, provisioner_url, and api_secret are required' },
         { status: 400 }
       );
+    }
+
+    try {
+      assertSafePublicProvisionerUrl(provisionerUrl);
+    } catch (urlErr) {
+      return NextResponse.json({ success: false, error: urlErr.message }, { status: 400 });
     }
 
     let wgPublicKey = String(body.wg_public_key || '').trim();
@@ -185,15 +194,21 @@ export async function PUT(request) {
     if (!(await validateAdminAuth(request))) return adminUnauthorizedResponse();
 
     const body = await request.json().catch(() => ({}));
-    const { id } = body;
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'VPS hub id is required' }, { status: 400 });
+    const id = String(body.id || '').trim();
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ success: false, error: 'Valid VPS hub UUID is required' }, { status: 400 });
     }
 
     const updates = { updated_at: new Date().toISOString() };
     if (body.name !== undefined) updates.name = String(body.name).trim();
     if (body.public_ip !== undefined) updates.public_ip = String(body.public_ip).trim();
-    if (body.provisioner_url !== undefined) updates.provisioner_url = normalizeProvisionerUrl(body.provisioner_url);
+    if (body.provisioner_url !== undefined) {
+      try {
+        updates.provisioner_url = assertSafePublicProvisionerUrl(body.provisioner_url);
+      } catch (urlErr) {
+        return NextResponse.json({ success: false, error: urlErr.message }, { status: 400 });
+      }
+    }
     if (typeof body.api_secret === 'string' && body.api_secret.trim()) updates.api_secret = body.api_secret.trim();
     if (body.wg_interface !== undefined) updates.wg_interface = String(body.wg_interface).trim() || 'wg0';
     if (body.wg_port !== undefined) updates.wg_port = Number(body.wg_port) || 51820;
@@ -241,9 +256,9 @@ export async function PATCH(request) {
     if (!(await validateAdminAuth(request))) return adminUnauthorizedResponse();
 
     const body = await request.json().catch(() => ({}));
-    const { id } = body;
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'VPS hub id is required' }, { status: 400 });
+    const id = String(body.id || '').trim();
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ success: false, error: 'Valid VPS hub UUID is required' }, { status: 400 });
     }
 
     const { data: hub, error } = await supabaseAdmin
@@ -300,13 +315,32 @@ export async function DELETE(request) {
     if (!(await validateAdminAuth(request))) return adminUnauthorizedResponse();
 
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'VPS hub id is required' }, { status: 400 });
+    const id = String(searchParams.get('id') || '').trim();
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ success: false, error: 'Valid VPS hub UUID is required' }, { status: 400 });
     }
+
+    const { data: deletedHub } = await supabaseAdmin
+      .from('vps_hubs')
+      .select('id, is_default')
+      .eq('id', id)
+      .maybeSingle();
 
     const { error } = await supabaseAdmin.from('vps_hubs').delete().eq('id', id);
     if (error) throw error;
+
+    // If the deleted hub was default, automatically promote the next active online hub
+    if (deletedHub?.is_default) {
+      const { data: remaining } = await supabaseAdmin
+        .from('vps_hubs')
+        .select('id, status')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+      if (remaining && remaining.length > 0) {
+        const nextDefault = remaining.find((h) => h.status === 'online') || remaining[0];
+        await supabaseAdmin.from('vps_hubs').update({ is_default: true }).eq('id', nextDefault.id);
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

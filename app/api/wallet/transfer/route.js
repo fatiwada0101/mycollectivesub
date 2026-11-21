@@ -17,9 +17,10 @@ export async function POST(request) {
     const body = await request.json();
     const { recipient_identifier, amount, note } = body;
 
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      return NextResponse.json({ error: 'Transfer amount must be greater than zero' }, { status: 400 });
+    const rawAmount = Number(amount);
+    const numAmount = Math.round(rawAmount * 100) / 100;
+    if (!Number.isFinite(rawAmount) || numAmount < 1) {
+      return NextResponse.json({ error: 'Transfer amount must be at least ₦1' }, { status: 400 });
     }
 
     if (!recipient_identifier || typeof recipient_identifier !== 'string') {
@@ -27,13 +28,27 @@ export async function POST(request) {
     }
 
     const cleanIdentifier = recipient_identifier.trim().toLowerCase();
+    if (!cleanIdentifier || cleanIdentifier.length > 160 || /[(),%*]/.test(cleanIdentifier)) {
+      return NextResponse.json({ error: 'Invalid recipient email or phone number format' }, { status: 400 });
+    }
 
-    // Find recipient in profiles or auth.users
-    const { data: recipientProfile, error: profErr } = await supabaseAdmin
-      .from('profiles')
-      .select('id, email, phone')
-      .or(`email.ilike.${cleanIdentifier},phone.eq.${cleanIdentifier}`)
-      .maybeSingle();
+    // Safe parameterized lookup (avoids PostgREST .or() filter injection)
+    let recipientProfile = null;
+    if (cleanIdentifier.includes('@')) {
+      const { data } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email, phone')
+        .eq('email', cleanIdentifier)
+        .maybeSingle();
+      recipientProfile = data;
+    } else {
+      const { data } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email, phone')
+        .eq('phone', cleanIdentifier)
+        .maybeSingle();
+      recipientProfile = data;
+    }
 
     let recipientUserId = recipientProfile?.id;
 

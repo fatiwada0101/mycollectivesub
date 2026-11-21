@@ -52,16 +52,19 @@ export async function GET(request) {
     const heartbeatUrl = `${baseUrl}/api/mikrotik/heartbeat?secret=${encodeURIComponent(secret)}&preserve_ip=1`;
     const refreshedWatchdog = `:if ([/ping ${hubGwIp} count=2] = 0) do={ :do { /interface wireguard disable [find where name=\\"wg-vps\\"]; :delay 2s; /interface wireguard enable [find where name=\\"wg-vps\\"] } on-error={}; :do { :local wgK [/interface wireguard get [find where name=\\"wg-vps\\"] public-key]; /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}\\" http-method=post http-header-field=\\"Content-Type: application/json\\" http-data=(\\"{\\\\\\"secret\\\\\\":\\\\\\"${escapeRouterOsString(secret)}\\\\\\",\\\\\\"wg_public_key\\\\\\":\\\\\\"\\" . \\$wgK . \\"\\\\\\"}\\") mode=https check-certificate=no keep-result=no } on-error={}; :do { /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}?secret=${escapeRouterOsString(secret)}\\" dst-path=\\"mcs-vps-sync.rsc\\" mode=https check-certificate=no; /import mcs-vps-sync.rsc; /file remove mcs-vps-sync.rsc } on-error={} }; :do { /tool fetch url=\\"${escapeRouterOsString(heartbeatUrl)}\\" mode=https check-certificate=no keep-result=no } on-error={}`;
 
-    // Only touch wg-vps if endpoint or public-key actually changed (idempotent, zero churn!)
+    // Only touch wg-vps if endpoint, port, public-key, or tunnel IP actually changed (idempotent, zero churn!)
     const script = [
       '# MyCollectiveSub Self-Healing VPS Failover Sync',
       ':if ([:len [/interface wireguard find where name="wg-vps"]] = 0) do={',
       '  /interface wireguard add name="wg-vps" listen-port=13231 mtu=1420',
       '}',
-      ':local curPeer [/interface wireguard peers find where interface="wg-vps"]',
+      ':local curPeers [/interface wireguard peers find where interface="wg-vps"]',
+      ':local curAddrs [/ip address find where interface="wg-vps"]',
       ':local needsUpdate true',
-      ':if ([:len $curPeer] = 1) do={',
-      `  :if (([/interface wireguard peers get $curPeer endpoint-address] = "${safeIp}") && ([/interface wireguard peers get $curPeer public-key] = "${safeKey}")) do={`,
+      ':if (([:len $curPeers] = 1) && ([:len $curAddrs] = 1)) do={',
+      '  :local pId [:pick $curPeers 0]',
+      '  :local aId [:pick $curAddrs 0]',
+      `  :if (([/interface wireguard peers get $pId endpoint-address] = "${safeIp}") && ([/interface wireguard peers get $pId endpoint-port] = ${wgPort}) && ([/interface wireguard peers get $pId public-key] = "${safeKey}") && ([/ip address get $aId address] = "${safeTunnelIp}/${prefixLen}")) do={`,
       '    :set needsUpdate false',
       '  }',
       '}',

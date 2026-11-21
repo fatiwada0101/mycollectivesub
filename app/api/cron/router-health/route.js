@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { getMikroTikConfigForRouter, sanitizeMikroTikConfig } from '@/lib/mikrotik';
 import { validateAdminAuth } from '@/lib/admin-auth';
+import { getRouterBillingSettings, syncRoutersBillingState } from '@/lib/router-billing';
 
 /**
  * Router Health Check Cron Job
@@ -46,7 +47,7 @@ export async function GET(request) {
     // Fetch all active routers
     const { data: routers, error: fetchErr } = await supabaseAdmin
       .from('routers')
-      .select('id, name, identity, ip_address, port, username, password, use_ssl, connection_mode, status, last_seen_at, dns_name')
+      .select('id, name, identity, ip_address, port, username, password, use_ssl, connection_mode, status, last_seen_at, dns_name, expiry_paused_by_billing, billing_enforcement_override')
       .eq('is_active', true);
 
     if (fetchErr) throw fetchErr;
@@ -168,10 +169,28 @@ export async function GET(request) {
       results.details.push(routerDetail);
     }
 
+    // Optional Monthly Router Billing reconciliation:
+    // Runs ONLY when global billing enforcement is ON or any router has an active override/pause,
+    // ensuring overdue due dates enforce automatically and offline routers reconcile upon reconnect.
+    let billingSync = null;
+    try {
+      const billingSettings = await getRouterBillingSettings();
+      const hasPausedOrForced = routers.some(
+        (r) => Boolean(r.expiry_paused_by_billing) || r.billing_enforcement_override === 'force_on'
+      );
+      if (billingSettings.enabled || hasPausedOrForced) {
+        const synced = await syncRoutersBillingState({ settings: billingSettings });
+        billingSync = { total: synced.total, paused_count: synced.paused_count };
+      }
+    } catch (billErr) {
+      console.warn('Non-fatal billing sync warning during router-health cron:', billErr.message);
+    }
+
     return NextResponse.json({
       success: true,
       timestamp: nowIso,
       ...results,
+      ...(billingSync ? { billing_sync: billingSync } : {}),
     });
   } catch (error) {
     console.error('Router health check cron error:', error);

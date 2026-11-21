@@ -11,6 +11,7 @@ import {
   suggestNextVpsSubnet,
   selectHubForRouter,
   getHubCapacityMetrics,
+  assertSafePublicProvisionerUrl,
 } from '../lib/vps-hub.js';
 import {
   generateZeroTouchRouterScript,
@@ -564,4 +565,33 @@ test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$w
   assert.ok(onboardSrc.includes('removeRouterPeerFromVps'), 'onboard route must roll back VPS peer on DB insert failure');
   assert.ok(bootstrapSrc.includes(".eq('bootstrap_token_hash', tokenHash)"), 'bootstrap callback must atomically claim single-use token');
   assert.ok(vpsInstSrc.includes('EXISTING_ADDR'), 'vps-installer must preserve existing wg0.conf subnet mask on live VPS');
+
+  // 5. Round 2 deep-dive guards: SSRF protection, offline-router billing reconciliation, wallet transfer filter safety, live atomic cutover
+  assert.equal(assertSafePublicProvisionerUrl('https://2.25.15.1:9443'), 'https://2.25.15.1:9443');
+  assert.equal(assertSafePublicProvisionerUrl('vps1.mycollectivesub.si:9443'), 'https://vps1.mycollectivesub.si:9443');
+  for (const ssrfUrl of [
+    'http://169.254.169.254/latest/meta-data',
+    'http://127.0.0.1:9443',
+    'http://localhost:3000',
+    'http://10.0.0.1:9443',
+    'http://192.168.1.1:9443',
+    'http://172.16.0.5:9443',
+    'http://[::1]:9443',
+    'file:///etc/passwd',
+  ]) {
+    assert.throws(() => assertSafePublicProvisionerUrl(ssrfUrl), `SSRF guard must block ${ssrfUrl}`);
+  }
+
+  const [billingLib, routerHealthCron, walletTransfer, validateRoute] = await Promise.all([
+    read('lib/router-billing.js'),
+    read('app/api/cron/router-health/route.js'),
+    read('app/api/wallet/transfer/route.js'),
+    read('app/api/vouchers/validate/route.js'),
+  ]);
+  assert.ok(billingLib.includes('canCommitPausedFlag'), 'router-billing must not mark DB synced when offline MikroTik push fails');
+  assert.ok(routerHealthCron.includes('syncRoutersBillingState'), 'router-health cron must reconcile due-date billing enforcement & offline routers');
+  assert.ok(!walletTransfer.includes('.or(`email.ilike.'), 'wallet transfer must not interpolate user input into PostgREST .or()');
+  assert.ok(migrateSrc.includes('an-vps-cutover') && migrateSrc.includes('routerTlsAgent'), 'vps migrate must support atomic live cutover over self-signed TLS');
+  assert.ok(vpsSyncSrc.includes('[:pick $curPeers 0]'), 'vps-sync must safely index RouterOS find arrays');
+  assert.ok(validateRoute.includes('toRouterUptime'), 'voucher validate auto-provision must use universal durationSeconds mapping');
 });

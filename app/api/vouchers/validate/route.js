@@ -147,27 +147,17 @@ export async function GET(request) {
       // form POST won't return 501 "Not Implemented".
       if (configured && !routerUser) {
         try {
-          // Determine duration from DB voucher or plan
-          const uptimeMap = {
-            '1h': '1h', '3h': '3h', '24h': '1d',
-            '3d': '3d', '7d': '7d', '30d': '30d',
+          // Resolve duration accurately via durationSeconds (handles 1h, 2h, 5h, 12h, 24h, 2d, 7d, 14d, 30d, etc.)
+          const toRouterUptime = (raw) => {
+            const sec = durationSeconds(raw);
+            if (!sec) return null;
+            if (sec % 86400 === 0) return `${sec / 86400}d`;
+            if (sec % 3600 === 0) return `${sec / 3600}h`;
+            if (sec % 60 === 0) return `${sec / 60}m`;
+            return `${sec}s`;
           };
 
-          let limitUptime = '1d'; // default 24h
-          const durationStr = dbVoucher.duration || '';
-          if (uptimeMap[durationStr]) {
-            limitUptime = uptimeMap[durationStr];
-          } else if (dbVoucher.profile_name) {
-            // Try to infer from plan name
-            const planLower = dbVoucher.profile_name.toLowerCase();
-            if (planLower.includes('1 hour') || planLower.includes('1h')) limitUptime = '1h';
-            else if (planLower.includes('3 hour') || planLower.includes('3h')) limitUptime = '3h';
-            else if (planLower.includes('6 hour') || planLower.includes('6h')) limitUptime = '6h';
-            else if (planLower.includes('12 hour') || planLower.includes('12h')) limitUptime = '12h';
-            else if (planLower.includes('7 day') || planLower.includes('7d') || planLower.includes('week')) limitUptime = '7d';
-            else if (planLower.includes('30 day') || planLower.includes('30d') || planLower.includes('month')) limitUptime = '30d';
-            else if (planLower.includes('3 day') || planLower.includes('3d')) limitUptime = '3d';
-          }
+          let limitUptime = toRouterUptime(dbVoucher.duration) || toRouterUptime(dbVoucher.profile_name) || '1d';
 
           // Look up plan details for speed/device limits
           let planDevices = 1;
@@ -186,8 +176,9 @@ export async function GET(request) {
               planDevices = Number(planData.devices) || 1;
               planUploadSpeed = planData.upload_speed || '12M';
               planDownloadSpeed = planData.download_speed || '12M';
-              if (planData.duration && uptimeMap[planData.duration]) {
-                limitUptime = uptimeMap[planData.duration];
+              if (planData.duration) {
+                const planUptime = toRouterUptime(planData.duration);
+                if (planUptime) limitUptime = planUptime;
               }
             }
           } catch (e) {

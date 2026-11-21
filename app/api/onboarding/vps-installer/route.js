@@ -6,6 +6,7 @@ import { hashBootstrapToken } from '@/lib/zero-touch-onboarding.js';
 import {
   isValidWgPublicKey,
   normalizeProvisionerUrl,
+  assertSafePublicProvisionerUrl,
   getHubGatewayCidr,
   parseCidrSubnet,
   DEFAULT_WG_SUBNET,
@@ -119,17 +120,11 @@ PostDown = iptables -D FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -D POS
 EOF
   chmod 600 "/etc/wireguard/\${WG_IFACE}.conf"
 else
-  # Preserve existing wg0.conf live subnet so cloud DB always matches this VPS's real wg0 mask
+  # Preserve existing wg0.conf live subnet (any /16../29 mask — cloud normalizes to canonical CIDR)
   EXISTING_ADDR="$(awk -F'=' '/^[[:space:]]*Address[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); split($2,a,","); print a[1]; exit}' "/etc/wireguard/\${WG_IFACE}.conf" || true)"
   if [[ "\${EXISTING_ADDR}" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$ ]]; then
     WG_HUB_IP="\${EXISTING_ADDR}"
-    EXISTING_MASK="\${EXISTING_ADDR#*/}"
-    EXISTING_IP="\${EXISTING_ADDR%/*}"
-    if [[ "\${EXISTING_MASK}" -eq 16 ]]; then
-      WG_SUBNET="$(echo "\${EXISTING_IP}" | awk -F. '{printf "%s.%s.0.0/16", $1, $2}')"
-    elif [[ "\${EXISTING_MASK}" -eq 24 ]]; then
-      WG_SUBNET="$(echo "\${EXISTING_IP}" | awk -F. '{printf "%s.%s.%s.0/24", $1, $2, $3}')"
-    fi
+    WG_SUBNET="\${EXISTING_ADDR}"
   fi
 fi
 
@@ -239,6 +234,12 @@ export async function POST(request) {
         { success: false, error: 'token, public_ip, provisioner_url, api_secret, and valid wg_public_key are required' },
         { status: 400 }
       );
+    }
+
+    try {
+      assertSafePublicProvisionerUrl(provisionerUrl);
+    } catch (urlErr) {
+      return NextResponse.json({ success: false, error: urlErr.message }, { status: 400 });
     }
 
     const tokenHash = hashBootstrapToken(token);

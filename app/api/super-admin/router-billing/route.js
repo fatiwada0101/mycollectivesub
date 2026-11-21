@@ -9,6 +9,8 @@ import {
 } from '@/lib/router-billing.js';
 import { logger } from '@/lib/logger.js';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * GET /api/super-admin/router-billing
  * Returns global billing enforcement settings + every router's live subscription/enforcement status.
@@ -90,9 +92,9 @@ export async function PATCH(request) {
     if (!(await validateAdminAuth(request))) return adminUnauthorizedResponse();
 
     const body = await request.json().catch(() => ({}));
-    const { router_id } = body;
-    if (!router_id) {
-      return NextResponse.json({ success: false, error: 'router_id is required' }, { status: 400 });
+    const router_id = String(body.router_id || '').trim();
+    if (!UUID_RE.test(router_id)) {
+      return NextResponse.json({ success: false, error: 'Valid router_id UUID is required' }, { status: 400 });
     }
 
     const updates = { updated_at: new Date().toISOString() };
