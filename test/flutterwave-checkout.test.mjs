@@ -756,3 +756,194 @@ test('Super Admin direct wallet funding uses exact 3-arg adjust_wallet_balance R
     assert.ok(autoSetupSrc.includes(domain), `auto-setup must include ${domain}`);
   }
 });
+
+test('Guest Wallet: localStorage token + Flutterwave webhook & topup credit full ₦100 (even after ₦3 fee) and purchase deducts atomically with router-failure refund', async () => {
+  const localMap = new Map();
+  const sessionMap = new Map();
+  const mockStorage = (map) => ({
+    getItem: k => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: k => map.delete(k),
+  });
+
+  const guestLib = await loadModule('lib/guest-vouchers.js', {
+    localStorage: mockStorage(localMap),
+    sessionStorage: mockStorage(sessionMap),
+    crypto: globalThis.crypto,
+    Event: class MockEvent { constructor(type) { this.type = type; } },
+    window: { dispatchEvent() {} },
+  }, ['getOrCreateGuestToken', 'setCachedGuestBalance', 'getCachedGuestBalance', 'savePendingGuestTopup', 'getPendingGuestTopups', 'removePendingGuestTopup']);
+
+  const gToken = guestLib.getOrCreateGuestToken();
+  assert.match(gToken, /^gw_[a-f0-9]{48}$/, 'guest token must be cryptographically formatted');
+  assert.equal(guestLib.getOrCreateGuestToken(), gToken, 'guest token must persist across calls');
+
+  guestLib.savePendingGuestTopup({ tx_ref: 'FLW_GTOPUP_100_TEST', amount: 100, guest_token: gToken });
+  assert.equal(guestLib.getPendingGuestTopups().length, 1);
+
+  // Mock DB for guest_wallets, transactions, vouchers, plans, app_settings
+  let guestBalance = 0;
+  const txRows = [];
+  const voucherRows = [];
+  let routerShouldFail = false;
+
+  const feeHelper = await loadModule('lib/flutterwave-fees.js', {}, [
+    'resolveFlutterwavePaidAmount',
+    'getFlutterwaveFeeAllowance',
+    'resolveFlutterwaveWalletCredit',
+  ]);
+
+  const supabaseMock = {
+    from(table) {
+      const filters = [];
+      const q = {
+        select() { return q; },
+        eq(k, v) { filters.push([k, v]); return q; },
+        insert(row) {
+          if (table === 'vouchers') voucherRows.push(row);
+          if (table === 'transactions') txRows.push({ id: `tx-${txRows.length + 1}`, ...row });
+          return {
+            select() { return { single: async () => ({ data: { id: `tx-${txRows.length}` } }) }; },
+            then: resolve => resolve({ data: row, error: null }),
+          };
+        },
+        upsert(row) {
+          const exists = txRows.find(t => t.flw_ref === row.flw_ref);
+          const inserted = exists ? null : { id: `tx-${txRows.length + 1}`, ...row };
+          if (inserted) txRows.push(inserted);
+          return {
+            select() { return { maybeSingle: async () => ({ data: inserted, error: null }) }; },
+          };
+        },
+        async maybeSingle() {
+          if (table === 'transactions') {
+            const ref = filters.find(([k]) => k === 'flw_ref')?.[1];
+            return { data: txRows.find(t => t.flw_ref === ref) || null };
+          }
+          if (table === 'guest_wallets') {
+            return { data: { guest_token: gToken, balance: guestBalance } };
+          }
+          if (table === 'plans') {
+            const id = filters.find(([k]) => k === 'id')?.[1];
+            if (id === 'plan-1hr') return { data: { id: 'plan-1hr', name: '3 Hour Fast Pass', price: 100, duration: '3h', devices: 1, upload_speed: '10M', download_speed: '10M' } };
+          }
+          if (table === 'app_settings') {
+            const key = filters.find(([k]) => k === 'key')?.[1];
+            if (key === 'flutterwave') return { data: { value: { secret_key: 'FLWSECK-test', webhook_secret: 'wh-secret' } } };
+            if (key === 'hotspot_settings') return { data: { value: { sharing_enabled: false, expiry_mode: 'elapsed' } } };
+          }
+          return { data: null };
+        },
+      };
+      return q;
+    },
+    async rpc(fn, args) {
+      if (fn === 'adjust_guest_wallet_balance') {
+        assert.equal(args.p_guest_token, gToken);
+        if (args.p_operation === 'add') {
+          guestBalance += Number(args.p_amount);
+          return { data: guestBalance, error: null };
+        }
+        if (args.p_operation === 'deduct') {
+          if (guestBalance < Number(args.p_amount)) return { data: -1, error: null };
+          guestBalance -= Number(args.p_amount);
+          return { data: guestBalance, error: null };
+        }
+      }
+      if (fn === 'claim_fallback_voucher') return { data: [], error: null };
+      return { data: null, error: null };
+    },
+  };
+
+  // 1. Webhook credits Guest Wallet full ₦100 when Flutterwave deducts ₦3 fee (amount: 97, app_fee: 3)
+  const flwGuestPayload = {
+    id: 8801,
+    tx_ref: 'FLW_GTOPUP_100_TEST',
+    status: 'successful',
+    currency: 'NGN',
+    amount: 97,
+    charged_amount: 97,
+    app_fee: 3,
+    amount_settled: 97,
+    meta: { type: 'guest_wallet_topup', guest_token: gToken, intended_amount: 100 },
+  };
+  const webhookRoute = await loadModule('app/api/webhook/flutterwave/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: supabaseMock,
+    broadcastWalletUpdate: async () => {},
+    rateLimitWebhook: () => null,
+    fulfillVerifiedFlutterwaveVoucher: async () => ({ ok: false }),
+    fetch: async () => Response.json({ status: 'success', data: flwGuestPayload }),
+  }, ['POST']);
+
+  const whRes = await webhookRoute.POST(new Request('https://test.local/api/webhook/flutterwave', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'verif-hash': 'wh-secret' },
+    body: JSON.stringify({ data: flwGuestPayload }),
+  }));
+  assert.equal(whRes.status, 200);
+  const whJson = await whRes.json();
+  assert.equal(whJson.action, 'guest_wallet_credit');
+  assert.equal(whJson.balance, 100);
+  assert.equal(guestBalance, 100);
+
+  // 2. Subsequent browser /api/guest-wallet/topup call stays idempotent (no double-credit!)
+  const topupRoute = await loadModule('app/api/guest-wallet/topup/route.js', {
+    ...feeHelper,
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: supabaseMock,
+    getFlutterwaveSecretKey: async () => 'FLWSECK-test',
+    logger: { financial() {}, getCorrelationId: () => 'cid-gw' },
+    fetch: async () => Response.json({ status: 'success', data: flwGuestPayload }),
+  }, ['POST']);
+  const dupRes = await topupRoute.POST(new Request('https://test.local/api/guest-wallet/topup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: gToken, flw_ref: 'FLW_GTOPUP_100_TEST', amount: 100 }),
+  }));
+  assert.equal(dupRes.status, 200);
+  assert.equal((await dupRes.json()).duplicate, true);
+  assert.equal(guestBalance, 100);
+
+  // 3. Guest purchases ₦100 plan from Guest Wallet — router failure refunds automatically, then retry succeeds!
+  const purchaseRoute = await loadModule('app/api/guest-wallet/purchase/route.js', {
+    NextResponse: { json: (body, init) => Response.json(body, init) },
+    supabaseAdmin: supabaseMock,
+    isMikroTikConfigured: async () => true,
+    createOrQueueHotspotUser: async opts => {
+      if (routerShouldFail) throw new Error('Router timeout');
+      return { routerId: '*42', profile: opts.profile };
+    },
+    generateUniqueCode: async () => '99441',
+    logger: { financial() {}, getCorrelationId: () => 'cid-gwp' },
+  }, ['POST']);
+
+  routerShouldFail = true;
+  const failPurchase = await purchaseRoute.POST(new Request('https://test.local/api/guest-wallet/purchase', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: gToken, plan_id: 'plan-1hr' }),
+  }));
+  assert.equal(failPurchase.status, 502);
+  assert.equal(guestBalance, 100, 'Guest wallet must be refunded automatically on router failure');
+
+  routerShouldFail = false;
+  const okPurchase = await purchaseRoute.POST(new Request('https://test.local/api/guest-wallet/purchase', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: gToken, plan_id: 'plan-1hr' }),
+  }));
+  assert.equal(okPurchase.status, 200);
+  const okJson = await okPurchase.json();
+  assert.equal(okJson.voucher_code, '99441');
+  assert.equal(okJson.new_balance, 0);
+  assert.equal(guestBalance, 0);
+
+  // 4. Attempting a second purchase with ₦0 balance is rejected cleanly
+  const emptyPurchase = await purchaseRoute.POST(new Request('https://test.local/api/guest-wallet/purchase', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest_token: gToken, plan_id: 'plan-1hr' }),
+  }));
+  assert.equal(emptyPurchase.status, 400);
+});

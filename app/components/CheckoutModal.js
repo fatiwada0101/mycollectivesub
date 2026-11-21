@@ -6,7 +6,15 @@ import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../../lib/supabase';
 import { createPaymentHeaders } from '../../lib/payment-client.js';
-import { saveGuestVoucher, savePendingOrder, removePendingOrder, getPendingOrders } from '../../lib/guest-vouchers.js';
+import {
+  saveGuestVoucher,
+  savePendingOrder,
+  removePendingOrder,
+  getPendingOrders,
+  getOrCreateGuestToken,
+  getCachedGuestBalance,
+  setCachedGuestBalance,
+} from '../../lib/guest-vouchers.js';
 import ReceiptModal from './ReceiptModal';
 import { ReceiptIcon } from './Icons';
 
@@ -154,9 +162,26 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
     wifi_ssid: 'MyCollectiveSub Wi-Fi',
   });
 
-  const walletBalance = wallet ? parseFloat(wallet.balance) : 0;
+  const [guestWalletBalance, setGuestWalletBalance] = useState(0);
+  const walletBalance = user ? (wallet ? parseFloat(wallet.balance) : 0) : guestWalletBalance;
   const price = plan ? Number(plan.price) : 0;
   const hasSufficientWallet = walletBalance >= price;
+
+  useEffect(() => {
+    if (user || !isOpen || typeof window === 'undefined') return;
+    setGuestWalletBalance(getCachedGuestBalance());
+    const token = getOrCreateGuestToken();
+    if (!token) return;
+    fetch(`/api/guest-wallet?guest_token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.balance === 'number') {
+          setGuestWalletBalance(d.balance);
+          setCachedGuestBalance(d.balance);
+        }
+      })
+      .catch(() => {});
+  }, [user, isOpen]);
   const passFlwFeePreview = !!(flwConfig?.passFeeToCustomer || flwConfig?.pass_fee_to_customer);
   const flwFeePctPreview = Math.min(10, Math.max(0, Number(flwConfig?.feePercent ?? flwConfig?.fee_percent ?? 2.15) || 0));
   const flwGatewayFeePreview =
@@ -198,7 +223,7 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       setVoucherData(null);
       setCopied(false);
       setAutoRenew(false);
-      setPaymentMethod(user && hasSufficientWallet ? 'wallet' : 'card');
+      setPaymentMethod(hasSufficientWallet ? 'wallet' : 'card');
       processingRef.current = false; // reset mutex when modal reopens
     }
   }, [isOpen, plan, user, hasSufficientWallet]);
@@ -250,11 +275,6 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
       return;
     }
 
-    if (!user) {
-      router.push('/auth');
-      processingRef.current = false;
-      return;
-    }
     if (!hasSufficientWallet) {
       router.push('/wallet');
       processingRef.current = false;
@@ -265,25 +285,40 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
     setLoadingText('Connecting to MikroTik Router...');
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      const headers = createPaymentHeaders(token);
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      let res;
+      if (!user) {
+        const guestToken = getOrCreateGuestToken();
+        res = await fetch('/api/guest-wallet/purchase', {
+          method: 'POST',
+          headers: createPaymentHeaders(),
+          body: JSON.stringify({
+            guest_token: guestToken,
+            plan_id: plan.id,
+            plan_name: plan.name,
+            duration: plan.duration,
+          }),
+        });
+      } else {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        const headers = createPaymentHeaders(token);
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
 
-      const res = await fetch('/api/purchase', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          plan_id: plan.id,
-          plan_name: plan.name,
-          price: plan.price,
-          duration: plan.duration,
-          user_id: user.id,
-          auto_renew: autoRenew,
-        }),
-      });
+        res = await fetch('/api/purchase', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            plan_id: plan.id,
+            plan_name: plan.name,
+            price: plan.price,
+            duration: plan.duration,
+            user_id: user.id,
+            auto_renew: autoRenew,
+          }),
+        });
+      }
 
       const resData = await res.json();
 
@@ -291,7 +326,12 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
         throw new Error(resData.error || 'Failed to create voucher on router');
       }
 
-      await refreshWallet();
+      if (user) {
+        await refreshWallet();
+      } else if (typeof resData.new_balance === 'number') {
+        setGuestWalletBalance(resData.new_balance);
+        setCachedGuestBalance(resData.new_balance);
+      }
 
       const activeV = {
         code: resData.voucher_code,
@@ -923,31 +963,29 @@ export default function CheckoutModal({ isOpen, onClose, plan, onSuccess }) {
             <div className="checkout-payment-methods">
               <label className="checkout-field-label">Select Payment Method</label>
 
-              {/* Method: Wallet */}
-              {user ? (
-                <div
-                  className={`checkout-method-option ${paymentMethod === 'wallet' ? 'selected' : ''}`}
-                  onClick={() => setPaymentMethod('wallet')}
-                >
-                  <div className="method-radio">
-                    <span className="radio-dot" />
-                  </div>
-                  <div className="method-details">
-                    <div className="method-title-row">
-                      <strong>My Collective Sub Wallet</strong>
-                      <span className="balance-pill">
-                        Balance: {formatPrice(walletBalance)}
-                      </span>
-                    </div>
-                    <p className="method-desc">
-                      {hasSufficientWallet
-                        ? 'Instant payment with zero transaction fees'
-                        : `Insufficient funds. Need ${formatPrice(price - walletBalance)} more.`}
-                    </p>
-                  </div>
-                  <span className="method-icon">💳</span>
+              {/* Method: Wallet (works for BOTH Registered Users AND Guest Wallet!) */}
+              <div
+                className={`checkout-method-option ${paymentMethod === 'wallet' ? 'selected' : ''}`}
+                onClick={() => setPaymentMethod('wallet')}
+              >
+                <div className="method-radio">
+                  <span className="radio-dot" />
                 </div>
-              ) : null}
+                <div className="method-details">
+                  <div className="method-title-row">
+                    <strong>{user ? 'My Collective Sub Wallet' : 'Guest Wallet (This Device)'}</strong>
+                    <span className="balance-pill">
+                      Balance: {formatPrice(walletBalance)}
+                    </span>
+                  </div>
+                  <p className="method-desc">
+                    {hasSufficientWallet
+                      ? 'Instant payment with zero transaction fees'
+                      : `Insufficient funds. Need ${formatPrice(price - walletBalance)} more — tap to top up.`}
+                  </p>
+                </div>
+                <span className="method-icon">💳</span>
+              </div>
 
               {/* Method: Online Card / Transfer (Flutterwave) */}
               <div

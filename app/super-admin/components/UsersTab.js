@@ -349,8 +349,20 @@ export default function UsersTab({ adminHeaders, formatPrice, showToast }) {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  gap: 10,
                 }}>
-                  <span style={{ opacity: 0.75, fontSize: '0.85rem', fontWeight: 600 }}>Current Balance</span>
+                  <div>
+                    <span style={{ opacity: 0.75, fontSize: '0.85rem', fontWeight: 600 }}>Current Balance</span>
+                    {quickFundOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUser(null)}
+                        style={{ marginLeft: 10, background: 'none', border: 'none', color: '#035EC8', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        Change user
+                      </button>
+                    )}
+                  </div>
                   <strong style={{ fontSize: '1.1rem', color: '#035EC8' }}>{formatPrice(selectedUser.wallet_balance)}</strong>
                 </div>
               ) : (

@@ -113,6 +113,7 @@ export async function POST(request) {
 
     let targetUserId = user_id || null;
     let targetEmail = (email || '').trim().toLowerCase();
+    let targetName = '';
 
     if (!targetUserId && targetEmail) {
       const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
@@ -121,12 +122,31 @@ export async function POST(request) {
       );
       if (matched?.id) {
         targetUserId = matched.id;
+        targetName = matched.user_metadata?.full_name || '';
       }
+    } else if (targetUserId && !targetEmail) {
+      try {
+        const { data: authUserRes } = await supabaseAdmin.auth.admin.getUserById(targetUserId);
+        if (authUserRes?.user) {
+          targetEmail = (authUserRes.user.email || '').trim().toLowerCase();
+          targetName = authUserRes.user.user_metadata?.full_name || '';
+        }
+      } catch {}
     }
 
     if (!targetUserId) {
       return NextResponse.json({ error: 'Customer account not found (provide valid user_id or registered email)' }, { status: 400 });
     }
+
+    // Ensure profile row exists so wallets/transactions foreign keys never fail for newly signed-up auth users
+    try {
+      await supabaseAdmin
+        .from('profiles')
+        .upsert(
+          { id: targetUserId, full_name: targetName || (targetEmail ? targetEmail.split('@')[0] : 'Customer') },
+          { onConflict: 'id', ignoreDuplicates: true }
+        );
+    } catch {}
 
     const numAmount = Math.round(Math.abs(Number(amount)) * 100) / 100;
     if (!Number.isFinite(numAmount) || numAmount <= 0 || numAmount > 10_000_000) {
@@ -192,10 +212,11 @@ export async function POST(request) {
       });
     } catch {}
 
-    // Broadcast live balance update to user's open tabs immediately
+    // Broadcast live balance update to user's open tabs immediately (only attach positive `amount` on credits)
     try {
       await broadcastWalletUpdate(targetUserId, newBalance, {
-        amount: isDebit ? -numAmount : numAmount,
+        amount: isDebit ? 0 : numAmount,
+        delta: isDebit ? -numAmount : numAmount,
         flw_ref: adminRef,
         transaction: insertedTx,
       });

@@ -183,7 +183,72 @@ export async function POST(request) {
       return NextResponse.json({ status: 'ignored', reason: 'invalid amount' });
     }
 
-    // 4. Strictly identify wallet top-up vs direct voucher purchase
+    // 4. Strictly identify guest wallet top-up, registered wallet top-up, or direct voucher purchase
+    const metaGuestToken = (eventData.meta?.guest_token || eventData['meta.guest_token'] || '').trim();
+    const isGuestWalletTopup =
+      (txRef.startsWith('FLW_GTOPUP_') || metaType === 'guest_wallet_topup') &&
+      /^gw_[a-f0-9]{24,64}$/i.test(metaGuestToken);
+
+    if (isGuestWalletTopup) {
+      const { data: insertedGuestTx, error: guestTxErr } = await supabaseAdmin
+        .from('transactions')
+        .upsert({
+          user_id: null,
+          type: 'wallet_topup',
+          amount,
+          status: 'successful',
+          flw_ref: txRef,
+          payment_method: 'card',
+          metadata: {
+            gateway: 'flutterwave',
+            guest_token: metaGuestToken,
+            customer_email: customerEmail || null,
+            transaction_id: eventData.id || null,
+            charged_amount: Number(eventData.charged_amount || amount),
+            app_fee: Number(eventData.app_fee || 0),
+            amount_settled: Number(eventData.amount_settled || amount),
+          },
+        }, { onConflict: 'flw_ref', ignoreDuplicates: true })
+        .select('id, amount, flw_ref')
+        .maybeSingle();
+
+      if (guestTxErr) {
+        console.error('Webhook guest wallet tx upsert error:', guestTxErr);
+        return NextResponse.json({ status: 'error', message: 'Failed to record guest deposit' }, { status: 500 });
+      }
+
+      let guestBalance = null;
+      if (insertedGuestTx?.id) {
+        const { data: newGuestBal, error: guestRpcErr } = await supabaseAdmin.rpc('adjust_guest_wallet_balance', {
+          p_guest_token: metaGuestToken,
+          p_amount: amount,
+          p_operation: 'add',
+          p_email: customerEmail || null,
+        });
+        if (guestRpcErr) {
+          console.error('Webhook adjust_guest_wallet_balance error:', guestRpcErr);
+          return NextResponse.json({ status: 'error', message: 'Failed to credit guest wallet' }, { status: 500 });
+        }
+        guestBalance = Number(newGuestBal);
+      } else {
+        const { data: existingGuestW } = await supabaseAdmin
+          .from('guest_wallets')
+          .select('balance')
+          .eq('guest_token', metaGuestToken)
+          .maybeSingle();
+        guestBalance = Number(existingGuestW?.balance || 0);
+      }
+
+      return NextResponse.json({
+        status: 'success',
+        action: insertedGuestTx?.id ? 'guest_wallet_credit' : 'already_processed',
+        amount,
+        balance: guestBalance,
+        guest_token: metaGuestToken,
+        tx_ref: txRef,
+      });
+    }
+
     const isWalletTopup = txRef.startsWith('FLW_TOPUP_') || metaType === 'wallet_topup';
 
     if (!isWalletTopup) {

@@ -6,6 +6,14 @@ import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../../lib/supabase';
 import { createPaymentHeaders } from '../../lib/payment-client.js';
+import {
+  getOrCreateGuestToken,
+  getCachedGuestBalance,
+  setCachedGuestBalance,
+  savePendingGuestTopup,
+  getPendingGuestTopups,
+  removePendingGuestTopup,
+} from '../../lib/guest-vouchers.js';
 import BottomNav from '../components/BottomNav';
 import ReceiptModal from '../components/ReceiptModal';
 import WalletTransferModal from '../components/WalletTransferModal';
@@ -27,7 +35,7 @@ import {
 } from '../components/Icons';
 
 
-const PRESET_AMOUNTS = ['500', '1000', '2000', '5000', '10000'];
+const PRESET_AMOUNTS = ['100', '250', '500', '1000', '2000', '5000'];
 
 function WalletContent() {
   const router = useRouter();
@@ -51,9 +59,10 @@ function WalletContent() {
     const redirectTxRef = searchParams?.get('tx_ref') || '';
     const redirectAmount = Number(searchParams?.get('amount') || 0);
 
-    if (!user || (depositParam !== 'success' && !redirectTxId)) return;
+    if (depositParam !== 'success' && !redirectTxId) return;
+    if (authLoading) return;
 
-    const redirectKey = `${user.id}:${redirectTxRef}:${redirectTxId}:${depositParam}:${redirectStatus}`;
+    const redirectKey = `${user?.id || 'guest'}:${redirectTxRef}:${redirectTxId}:${depositParam}:${redirectStatus}`;
     if (topupRedirectHandledRef.current === redirectKey) return;
     topupRedirectHandledRef.current = redirectKey;
 
@@ -63,6 +72,20 @@ function WalletContent() {
 
     if (redirectStatus === 'cancelled' || redirectStatus === 'failed') {
       showToast('Payment was cancelled or failed');
+      return;
+    }
+
+    if (!user) {
+      const gToken = getOrCreateGuestToken();
+      const pendingList = getPendingGuestTopups();
+      const matchedPending = pendingList.find((p) => p.tx_ref === redirectTxRef) || pendingList[0];
+      const resolvedAmount = redirectAmount > 0 ? redirectAmount : Number(matchedPending?.amount || 0);
+      const resolvedRef = redirectTxRef || matchedPending?.tx_ref || '';
+      if (gToken && (redirectTxId || resolvedRef)) {
+        finalizeGuestTopup(resolvedAmount, resolvedRef, redirectTxId, gToken, matchedPending?.email || '');
+        return;
+      }
+      fetchGuestWalletData();
       return;
     }
 
@@ -84,10 +107,13 @@ function WalletContent() {
     refreshWallet();
     fetchTransactions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, user]);
+  }, [searchParams, user, authLoading]);
 
   const [activeSegment, setActiveSegment] = useState('deposits'); // 'deposits' | 'vouchers'
-  const [amountVal, setAmountVal] = useState('2000');
+  const [amountVal, setAmountVal] = useState('500');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestBalance, setGuestBalance] = useState(0);
+  const [pendingGuestTopups, setPendingGuestTopups] = useState([]);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(false);
   const [flwConfig, setFlwConfig] = useState({ publicKey: '', enabled: false });
@@ -103,9 +129,9 @@ function WalletContent() {
   const [totalDeposits, setTotalDeposits] = useState(0);
   const [totalSpending, setTotalSpending] = useState(0);
 
-  // Real balance — 0 if no wallet
-  const walletBalance = wallet ? parseFloat(wallet.balance) : 0;
-  const displayName = profile?.full_name || (user?.email ? user.email.split('@')[0] : 'Member');
+  // Real balance — registered user wallet OR server-backed Guest Wallet
+  const walletBalance = user ? (wallet ? parseFloat(wallet.balance) : 0) : guestBalance;
+  const displayName = profile?.full_name || (user?.email ? user.email.split('@')[0] : 'Guest');
 
   const showToast = (msg) => {
     setToast(msg);
@@ -143,9 +169,94 @@ function WalletContent() {
       .catch(() => {});
   }, []);
 
+  const computeTxSummary = useCallback((txList) => {
+    const list = Array.isArray(txList) ? txList : [];
+    setTransactions(list);
+    let deposits = 0;
+    let spending = 0;
+    list.forEach((tx) => {
+      if (tx.type === 'wallet_topup') deposits += Number(tx.amount);
+      else if (tx.type === 'voucher_purchase') spending += Number(tx.amount);
+    });
+    setTotalDeposits(deposits);
+    setTotalSpending(spending);
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const today = new Date();
+    const weekData = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dayName = days[d.getDay()];
+      const dateStr = d.toISOString().split('T')[0];
+      const dayTotal = list
+        .filter((tx) => new Date(tx.created_at).toISOString().split('T')[0] === dateStr)
+        .reduce((sum, tx) => sum + Number(tx.amount), 0);
+      weekData.push({ day: dayName, amount: dayTotal, isToday: i === 0 });
+    }
+    const maxAmt = Math.max(...weekData.map((w) => w.amount), 100);
+    weekData.forEach((w) => {
+      w.height = Math.max(12, Math.round((w.amount / maxAmt) * 100));
+    });
+    setWeeklyData(weekData);
+  }, []);
+
+  const fetchGuestWalletData = useCallback(async (checkPending = true) => {
+    if (user || typeof window === 'undefined') return;
+    const token = getOrCreateGuestToken();
+    if (!token) return;
+    setGuestBalance(getCachedGuestBalance());
+    const pending = getPendingGuestTopups();
+    setPendingGuestTopups(pending);
+
+    if (checkPending && pending.length > 0) {
+      for (const p of pending) {
+        try {
+          const checkRes = await fetch('/api/guest-wallet/topup', {
+            method: 'POST',
+            headers: createPaymentHeaders(),
+            body: JSON.stringify({
+              guest_token: token,
+              flw_ref: p.tx_ref,
+              amount: p.amount,
+              email: p.email || guestEmail,
+              check_only: true,
+            }),
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            if (checkData?.status === 'fulfilled') {
+              removePendingGuestTopup(p.tx_ref);
+              const bal = Number(checkData.balance || 0);
+              setGuestBalance(bal);
+              setCachedGuestBalance(bal);
+              setPendingGuestTopups(getPendingGuestTopups());
+              showToast(`✅ ${formatPrice(checkData.amount || p.amount)} added to your Guest Wallet!`);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    try {
+      const res = await fetch(`/api/guest-wallet?guest_token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        const bal = Number(data.balance || 0);
+        setGuestBalance(bal);
+        setCachedGuestBalance(bal);
+        if (data.email && !guestEmail) setGuestEmail(data.email);
+        computeTxSummary(data.transactions || []);
+      }
+    } catch {}
+  }, [user, guestEmail, computeTxSummary]);
+
   // Fetch real transaction data for charts and history
   const fetchTransactions = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      await fetchGuestWalletData(false);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('transactions')
@@ -156,59 +267,43 @@ function WalletContent() {
         .limit(100);
 
       if (!error && data) {
-        setTransactions(data);
-
-        // Compute totals
-        let deposits = 0;
-        let spending = 0;
-        data.forEach(tx => {
-          if (tx.type === 'wallet_topup') deposits += Number(tx.amount);
-          else if (tx.type === 'voucher_purchase') spending += Number(tx.amount);
-        });
-        setTotalDeposits(deposits);
-        setTotalSpending(spending);
-
-        // Compute weekly bar chart from real data
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const today = new Date();
-        const weekData = [];
-
-        for (let i = 6; i >= 0; i--) {
-          const d = new Date(today);
-          d.setDate(d.getDate() - i);
-          const dayName = days[d.getDay()];
-          const dateStr = d.toISOString().split('T')[0];
-
-          const dayTotal = data
-            .filter(tx => {
-              const txDate = new Date(tx.created_at).toISOString().split('T')[0];
-              return txDate === dateStr;
-            })
-            .reduce((sum, tx) => sum + Number(tx.amount), 0);
-
-          weekData.push({
-            day: dayName,
-            amount: dayTotal,
-            isToday: i === 0,
-          });
-        }
-
-        // Normalize heights
-        const maxAmt = Math.max(...weekData.map(w => w.amount), 100);
-        weekData.forEach(w => {
-          w.height = Math.max(12, Math.round((w.amount / maxAmt) * 100));
-        });
-
-        setWeeklyData(weekData);
+        computeTxSummary(data);
       }
     } catch (err) {
       console.error('Error fetching transactions:', err);
     }
-  }, [user]);
+  }, [user, fetchGuestWalletData, computeTxSummary]);
 
   useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
+    if (authLoading) return;
+    if (user) {
+      fetchTransactions();
+    } else {
+      fetchGuestWalletData(true);
+    }
+  }, [authLoading, user, fetchTransactions, fetchGuestWalletData]);
+
+  // Auto-refresh Guest Wallet when returning from OPay / PalmPay / Moniepoint
+  useEffect(() => {
+    if (user || authLoading) return;
+    const handleResume = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchGuestWalletData(true);
+      }
+    };
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('visibilitychange', handleResume);
+    const interval = setInterval(() => {
+      if (getPendingGuestTopups().length > 0) {
+        fetchGuestWalletData(true);
+      }
+    }, 8000);
+    return () => {
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('visibilitychange', handleResume);
+      clearInterval(interval);
+    };
+  }, [user, authLoading, fetchGuestWalletData]);
 
   // Realtime transaction updates (reflects webhook deposits instantly)
   useEffect(() => {
@@ -232,7 +327,7 @@ function WalletContent() {
       .on('broadcast', { event: 'wallet_update' }, (msg) => {
         fetchTransactions();
         refreshWallet();
-        if (msg?.payload?.amount) {
+        if (Number(msg?.payload?.amount) > 0) {
           showToast(`₦${Number(msg.payload.amount).toLocaleString()} deposit credited to your balance!`);
         }
       })
@@ -269,17 +364,116 @@ function WalletContent() {
       : 0;
   const flwDepositTotalPreview = depositNum + flwDepositFeePreview;
 
+  const finalizeGuestTopup = async (amount, ref, transactionId, guestTokenOverride = '', emailOverride = '') => {
+    if (topupProcessingRef.current) return;
+    topupProcessingRef.current = true;
+    setLoading(true);
+    try {
+      const gToken = guestTokenOverride || getOrCreateGuestToken();
+      const res = await fetch('/api/guest-wallet/topup', {
+        method: 'POST',
+        headers: createPaymentHeaders(),
+        body: JSON.stringify({
+          guest_token: gToken,
+          amount,
+          flw_ref: ref,
+          transaction_id: transactionId || undefined,
+          email: emailOverride || guestEmail || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Guest deposit verification failed');
+      removePendingGuestTopup(ref);
+      const bal = Number(data.balance || 0);
+      setGuestBalance(bal);
+      setCachedGuestBalance(bal);
+      setPendingGuestTopups(getPendingGuestTopups());
+      await fetchGuestWalletData(false);
+      showToast(`✅ ${formatPrice(data.amount || amount)} added to your Guest Wallet!`);
+      setActiveSegment('deposits');
+    } catch (err) {
+      showToast('Note: ' + err.message);
+    } finally {
+      setLoading(false);
+      topupProcessingRef.current = false;
+    }
+  };
+
   const handleFundWallet = async () => {
     if (loading || topupProcessingRef.current || monnifyCheckoutOpenRef.current) return;
 
-    if (!user) {
-      showToast('Please sign in to top up your wallet');
-      router.push('/auth');
+    if (!depositNum || depositNum < 100) {
+      showToast('Minimum deposit amount is ₦100');
       return;
     }
 
-    if (!depositNum || depositNum < 100) {
-      showToast('Minimum deposit amount is ₦100');
+    // ── GUEST WALLET FLUTTERWAVE TOP-UP (No sign-in required!) ──
+    if (!user) {
+      if (!flwConfig.publicKey || typeof window.FlutterwaveCheckout === 'undefined') {
+        showToast('Payment gateway is loading or not configured. Please try again in a moment.');
+        return;
+      }
+      const gToken = typeof getOrCreateGuestToken === 'function' ? getOrCreateGuestToken() : '';
+      if (!gToken) {
+        showToast('Unable to initialize device wallet storage. Please allow browser storage or sign in.');
+        return;
+      }
+      const cleanGuestEmail = (guestEmail || '').trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())
+        ? guestEmail.trim()
+        : `guest_${gToken.slice(3, 11)}@mycollectivesub.si`;
+      const txRef = `FLW_GTOPUP_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const redirectOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+      let guestFlwStarted = false;
+      const passFlwFee = !!(flwConfig?.passFeeToCustomer || flwConfig?.pass_fee_to_customer);
+      const flwFeePct = Math.min(10, Math.max(0, Number(flwConfig?.feePercent ?? flwConfig?.fee_percent ?? 2.15) || 0));
+      const flwGatewayFee = passFlwFee && flwFeePct > 0 && depositNum > 0
+        ? Math.min(Math.ceil(depositNum / (1 - flwFeePct / 100)) - depositNum, 2150)
+        : 0;
+      const flwCheckoutAmount = depositNum + flwGatewayFee;
+
+      if (typeof savePendingGuestTopup === 'function') {
+        savePendingGuestTopup({ tx_ref: txRef, amount: depositNum, guest_token: gToken, email: cleanGuestEmail });
+        if (typeof setPendingGuestTopups === 'function') setPendingGuestTopups(getPendingGuestTopups());
+      }
+
+      window.FlutterwaveCheckout({
+        public_key: flwConfig.publicKey,
+        tx_ref: txRef,
+        amount: flwCheckoutAmount,
+        currency: 'NGN',
+        payment_options: 'card,banktransfer,ussd',
+        redirect_url: `${redirectOrigin}/wallet?deposit=success&amount=${encodeURIComponent(depositNum)}&guest=1`,
+        customer: {
+          email: cleanGuestEmail,
+          phone_number: '08000000000',
+          name: 'Guest Customer',
+        },
+        meta: {
+          type: 'guest_wallet_topup',
+          guest_token: gToken,
+          intended_amount: depositNum,
+          gateway_fee: flwGatewayFee,
+        },
+        customizations: {
+          title: `${appName} Guest Wallet`,
+          description: `Credit ${formatPrice(depositNum)} to your Guest Wi-Fi Wallet`,
+        },
+        callback: async function (response) {
+          if (guestFlwStarted) return;
+          guestFlwStarted = true;
+          if (response.status === 'successful' || response.status === 'completed') {
+            const transactionId = response.transaction_id || response.id;
+            await finalizeGuestTopup(depositNum, txRef, transactionId, gToken, cleanGuestEmail);
+          } else {
+            showToast('Payment was cancelled or failed');
+          }
+        },
+        onclose: function () {
+          if (!guestFlwStarted && typeof fetchGuestWalletData === 'function') {
+            fetchGuestWalletData(true);
+          }
+        },
+      });
       return;
     }
 
@@ -490,8 +684,12 @@ function WalletContent() {
         <button
           className="circle-icon-btn"
           onClick={() => {
-            refreshWallet();
-            fetchTransactions();
+            if (user) {
+              refreshWallet();
+              fetchTransactions();
+            } else {
+              fetchGuestWalletData(true);
+            }
             showToast('Wallet refreshed');
           }}
           aria-label="Refresh"
@@ -501,61 +699,116 @@ function WalletContent() {
         </button>
       </div>
 
-      {/* ── Guest Warning Banner (if not logged in) ── */}
+      {/* ── Guest Wallet Active Banner (if not logged in) ── */}
       {!user && !authLoading && (
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.08) 0%, rgba(79, 70, 229, 0.12) 100%)',
-            border: '1px solid rgba(124, 58, 237, 0.25)',
+            background: '#EFF6FF',
+            border: '1.5px solid #BFDBFE',
             borderRadius: '18px',
-            padding: '16px',
-            marginBottom: '20px',
+            padding: '14px 16px',
+            marginBottom: '18px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px',
+            gap: '8px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <WalletIcon size={20} color="#7C3AED" />
-            <span style={{ fontWeight: 700, fontSize: '14px', color: '#1E1B4B' }}>
-              Sign In to Fund Your Wallet
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: '13px', color: '#4B5563', lineHeight: 1.5 }}>
-            To keep a persistent wallet balance and enjoy 1-click Wi-Fi pass purchases across all your devices, please create an account or sign in.
-          </p>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <WalletIcon size={18} color="#035EC8" />
+              <span style={{ fontWeight: 800, fontSize: '13.5px', color: '#062B66' }}>
+                Guest Wallet Active (No Sign-In Needed)
+              </span>
+            </div>
             <button
+              type="button"
               onClick={() => router.push('/auth')}
-              style={{
-                background: 'var(--dock-bg, #141417)',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '8px 16px',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Sign In / Register →
-            </button>
-            <button
-              onClick={() => router.push('/packages')}
               style={{
                 background: '#FFFFFF',
                 color: '#035EC8',
-                border: '1.5px solid #0088FF',
-                borderRadius: '12px',
-                padding: '8px 16px',
-                fontSize: '12px',
+                border: '1px solid #BFDBFE',
+                borderRadius: '999px',
+                padding: '5px 12px',
+                fontSize: '11.5px',
                 fontWeight: 800,
                 cursor: 'pointer',
               }}
             >
-              Buy Pass Directly as Guest →
+              Sign In (Optional) →
             </button>
           </div>
+          <p style={{ margin: 0, fontSize: '12.5px', color: '#1E3A8A', lineHeight: 1.45 }}>
+            Deposit funds directly below via OPay, PalmPay, Moniepoint, Card, or USSD. Your Guest Wallet balance is saved securely on this device so you can buy Wi-Fi passes anytime!
+          </p>
+        </div>
+      )}
+
+      {/* ── Pending Guest Deposit Recovery Banner ── */}
+      {!user && pendingGuestTopups.length > 0 && (
+        <div style={{ marginBottom: '18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {pendingGuestTopups.map((p) => (
+            <div
+              key={p.tx_ref}
+              style={{
+                background: '#FFFBEB',
+                border: '1.5px solid #FCD34D',
+                borderRadius: '16px',
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ minWidth: 0, flex: '1 1 180px' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#92400E' }}>
+                  ⏳ Pending Guest Deposit ({formatPrice(p.amount)})
+                </div>
+                <div style={{ fontSize: '11px', color: '#B45309', marginTop: '2px' }}>
+                  Already sent transfer from OPay, PalmPay, or Moniepoint? Tap Verify to credit your balance now.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => finalizeGuestTopup(p.amount, p.tx_ref, '', p.guest_token, p.email)}
+                  style={{
+                    padding: '7px 12px',
+                    borderRadius: '999px',
+                    background: 'linear-gradient(135deg, #062B66 0%, #0088FF 100%)',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    fontSize: '11.5px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {loading ? 'Checking...' : '✓ Verify & Credit'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    removePendingGuestTopup(p.tx_ref);
+                    setPendingGuestTopups(getPendingGuestTopups());
+                  }}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '999px',
+                    background: 'transparent',
+                    color: '#92400E',
+                    border: '1px solid #F59E0B',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -623,7 +876,13 @@ function WalletContent() {
             Deposit
           </button>
           <button
-            onClick={() => setShowTransferModal(true)}
+            onClick={() => {
+              if (!user) {
+                showToast('Sign in to transfer balance to another member');
+                return;
+              }
+              setShowTransferModal(true);
+            }}
             style={{
               background: 'rgba(255, 255, 255, 0.18)',
               color: '#FFFFFF',
@@ -721,6 +980,32 @@ function WalletContent() {
             NGN (₦)
           </div>
         </div>
+
+        {/* Optional Receipt Email for Guests */}
+        {!user && (
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#52525B', marginBottom: '6px' }}>
+              Receipt Email (optional)
+            </label>
+            <input
+              type="email"
+              value={guestEmail}
+              onChange={(e) => setGuestEmail(e.target.value)}
+              placeholder="Optional: your@email.com for payment receipt"
+              style={{
+                width: '100%',
+                background: '#F4F4F5',
+                borderRadius: '14px',
+                padding: '11px 14px',
+                border: '1.5px solid #E4E4E7',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                color: '#18181B',
+                outline: 'none',
+              }}
+            />
+          </div>
+        )}
 
         {/* Amount Input Block */}
         <div style={{ marginBottom: '16px' }}>

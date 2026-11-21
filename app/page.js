@@ -5,7 +5,16 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from './context/AuthContext';
 import { useBranding } from './context/BrandingContext';
 import { supabase } from '../lib/supabase';
-import { enableGuestSession, getGuestVouchers, hasGuestOrVoucherSession } from '../lib/guest-vouchers.js';
+import {
+  enableGuestSession,
+  getGuestVouchers,
+  hasGuestOrVoucherSession,
+  getOrCreateGuestToken,
+  getCachedGuestBalance,
+  setCachedGuestBalance,
+  getPendingGuestTopups,
+  removePendingGuestTopup,
+} from '../lib/guest-vouchers.js';
 import BottomNav from './components/BottomNav';
 import SideDrawer from './components/SideDrawer';
 import CheckoutModal from './components/CheckoutModal';
@@ -83,10 +92,71 @@ export default function HomePage() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
 
-  // Real balance — 0 for guests, actual wallet balance for logged-in users
-  const walletBalance = wallet ? parseFloat(wallet.balance) : 0;
+  // Real balance — actual wallet balance for logged-in users, server-backed Guest Wallet for guests
+  const [guestWalletBalance, setGuestWalletBalance] = useState(0);
+  const walletBalance = user ? (wallet ? parseFloat(wallet.balance) : 0) : guestWalletBalance;
   const displayName = profile?.full_name || (user?.email ? user.email.split('@')[0] : 'Guest');
   const initials = displayName.charAt(0).toUpperCase();
+
+  const syncGuestWallet = useCallback(async () => {
+    if (user || typeof window === 'undefined') return;
+    const token = getOrCreateGuestToken();
+    if (!token) return;
+    setGuestWalletBalance(getCachedGuestBalance());
+    try {
+      // Auto-verify any pending guest Flutterwave deposits saved before switching to OPay/PalmPay/Moniepoint
+      const pending = getPendingGuestTopups();
+      for (const p of pending) {
+        try {
+          const checkRes = await fetch('/api/guest-wallet/topup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              guest_token: token,
+              flw_ref: p.tx_ref,
+              amount: p.amount,
+              email: p.email,
+              check_only: true,
+            }),
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            if (checkData?.status === 'fulfilled') {
+              removePendingGuestTopup(p.tx_ref);
+              setGuestWalletBalance(Number(checkData.balance || 0));
+              setCachedGuestBalance(Number(checkData.balance || 0));
+            }
+          }
+        } catch {}
+      }
+      const res = await fetch(`/api/guest-wallet?guest_token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        const bal = Number(data.balance || 0);
+        setGuestWalletBalance(bal);
+        setCachedGuestBalance(bal);
+      }
+    } catch {}
+  }, [user]);
+
+  useEffect(() => {
+    if (user) return;
+    syncGuestWallet();
+    const onUpdate = () => setGuestWalletBalance(getCachedGuestBalance());
+    const onResume = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        syncGuestWallet();
+      }
+    };
+    window.addEventListener('guest_wallet_updated', onUpdate);
+    window.addEventListener('focus', onResume);
+    window.addEventListener('visibilitychange', onResume);
+    return () => {
+      window.removeEventListener('guest_wallet_updated', onUpdate);
+      window.removeEventListener('focus', onResume);
+      window.removeEventListener('visibilitychange', onResume);
+    };
+  }, [user, syncGuestWallet]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -326,6 +396,7 @@ export default function HomePage() {
         plan={selectedPlan}
         onSuccess={() => {
           if (user) refreshWallet();
+          else syncGuestWallet();
           syncActiveVoucher();
           showToast('Voucher generated successfully!');
         }}
@@ -745,7 +816,7 @@ export default function HomePage() {
             </div>
 
             <button
-              onClick={() => router.push(user ? '/wallet' : '/auth')}
+              onClick={() => router.push('/wallet')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -946,7 +1017,7 @@ export default function HomePage() {
 
         {/* Top Up */}
         <div
-          onClick={() => router.push(user ? '/wallet' : '/auth')}
+          onClick={() => router.push('/wallet')}
           style={{
             background: 'var(--surface, #FFFFFF)',
             borderRadius: '18px',
