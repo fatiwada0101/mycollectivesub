@@ -7,6 +7,7 @@ import {
   isValidWgPublicKey,
   normalizeProvisionerUrl,
   getHubGatewayCidr,
+  parseCidrSubnet,
   DEFAULT_WG_SUBNET,
   DEFAULT_PORT_RANGE_START,
   DEFAULT_PORT_RANGE_END,
@@ -57,11 +58,12 @@ export async function GET(request) {
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
     const callbackUrl = `${baseUrl}/api/onboarding/vps-installer`;
 
-    const wgSubnet = hub.wg_subnet || DEFAULT_WG_SUBNET;
+    const wgSubnet = parseCidrSubnet(hub.wg_subnet || DEFAULT_WG_SUBNET).cidr;
     const wgHubIp = getHubGatewayCidr(wgSubnet);
-    const wgPort = Number(hub.wg_port) || 51820;
-    const portStart = Number(hub.port_range_start) || DEFAULT_PORT_RANGE_START;
-    const portEnd = Number(hub.port_range_end) || DEFAULT_PORT_RANGE_END;
+    const wgPort = Math.min(65535, Math.max(1024, Number(hub.wg_port) || 51820));
+    const portStart = Math.min(65535, Math.max(1024, Number(hub.port_range_start) || DEFAULT_PORT_RANGE_START));
+    const portEnd = Math.min(65535, Math.max(portStart, Number(hub.port_range_end) || DEFAULT_PORT_RANGE_END));
+    const safeHubName = String(hub.name || 'VPS-Hub').replace(/[^a-zA-Z0-9 ._-]/g, '').slice(0, 64);
 
     const bashScript = `#!/usr/bin/env bash
 set -euo pipefail
@@ -77,10 +79,10 @@ WG_PORT="${wgPort}"
 WG_SUBNET="${wgSubnet}"
 WG_HUB_IP="${wgHubIp}"
 API_PORT="9443"
-PUBLIC_IP="$(curl -4 -fsSL https://api.ipify.org || hostname -I | awk '{print $1}')"
+PUBLIC_IP="$(curl -4 -fsSL -m 8 https://api.ipify.org || hostname -I | awk '{print $1}')"
 WAN_IFACE="$(ip route show default | awk '/default/ {print $5; exit}')"
 
-echo "=== Auto-Enrolling MyCollectiveSub VPS Hub (${hub.name.replace(/["`$\\]/g, '')}) on \${PUBLIC_IP} ==="
+echo "=== Auto-Enrolling MyCollectiveSub VPS Hub (${safeHubName}) on \${PUBLIC_IP} ==="
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
@@ -116,6 +118,19 @@ PostUp = iptables -A FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -A POSTR
 PostDown = iptables -D FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -D POSTROUTING -o \${WAN_IFACE} -j MASQUERADE
 EOF
   chmod 600 "/etc/wireguard/\${WG_IFACE}.conf"
+else
+  # Preserve existing wg0.conf live subnet so cloud DB always matches this VPS's real wg0 mask
+  EXISTING_ADDR="$(awk -F'=' '/^[[:space:]]*Address[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); split($2,a,","); print a[1]; exit}' "/etc/wireguard/\${WG_IFACE}.conf" || true)"
+  if [[ "\${EXISTING_ADDR}" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$ ]]; then
+    WG_HUB_IP="\${EXISTING_ADDR}"
+    EXISTING_MASK="\${EXISTING_ADDR#*/}"
+    EXISTING_IP="\${EXISTING_ADDR%/*}"
+    if [[ "\${EXISTING_MASK}" -eq 16 ]]; then
+      WG_SUBNET="$(echo "\${EXISTING_IP}" | awk -F. '{printf "%s.%s.0.0/16", $1, $2}')"
+    elif [[ "\${EXISTING_MASK}" -eq 24 ]]; then
+      WG_SUBNET="$(echo "\${EXISTING_IP}" | awk -F. '{printf "%s.%s.%s.0/24", $1, $2, $3}')"
+    fi
+  fi
 fi
 
 systemctl enable "wg-quick@\${WG_IFACE}"
@@ -241,7 +256,14 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'VPS bootstrap token expired' }, { status: 410 });
     }
 
-    const { error: updateErr } = await supabaseAdmin
+    let canonicalSubnet = DEFAULT_WG_SUBNET;
+    try {
+      canonicalSubnet = parseCidrSubnet(String(body.wg_subnet || DEFAULT_WG_SUBNET).trim()).cidr;
+    } catch {
+      canonicalSubnet = DEFAULT_WG_SUBNET;
+    }
+
+    const { data: claimedRows, error: updateErr } = await supabaseAdmin
       .from('vps_hubs')
       .update({
         public_ip: publicIp,
@@ -249,16 +271,21 @@ export async function POST(request) {
         api_secret: apiSecret,
         wg_public_key: wgPublicKey,
         wg_port: Number(body.wg_port) || 51820,
-        wg_subnet: String(body.wg_subnet || DEFAULT_WG_SUBNET).trim(),
+        wg_subnet: canonicalSubnet,
         status: 'online',
         last_health_at: new Date().toISOString(),
         bootstrap_token_hash: null,
         bootstrap_expires_at: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', hub.id);
+      .eq('id', hub.id)
+      .eq('bootstrap_token_hash', tokenHash)
+      .select('id');
 
     if (updateErr) throw updateErr;
+    if (!claimedRows || claimedRows.length === 0) {
+      return NextResponse.json({ success: false, error: 'VPS bootstrap token was already consumed' }, { status: 409 });
+    }
 
     logger.info('VPS Hub self-registered via Zero-SSH installer:', { hub_id: hub.id, public_ip: publicIp });
 

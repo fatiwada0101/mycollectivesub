@@ -36,10 +36,11 @@ function startLocalBridge() {
 
         if (req.method === 'POST' && url.pathname === '/api/cloud-login') {
           const cleanCloud = String(body.cloudUrl || '').trim().replace(/\/+$/, '');
+          const adminUser = String(body.username || 'admin').trim();
           const authRes = await fetch(`${cleanCloud}/api/super-admin/auth`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: body.password }),
+            body: JSON.stringify({ username: adminUser, password: body.password }),
           });
           const authData = await authRes.json().catch(() => ({}));
           if (!authRes.ok || !authData.token) {

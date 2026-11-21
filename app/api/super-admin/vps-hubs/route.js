@@ -6,6 +6,7 @@ import {
   normalizeProvisionerUrl,
   testVpsHubConnection,
   suggestNextVpsSubnet,
+  parseCidrSubnet,
   DEFAULT_WG_SUBNET,
   DEFAULT_PORT_RANGE_START,
   DEFAULT_PORT_RANGE_END,
@@ -94,8 +95,21 @@ export async function POST(request) {
     let wgPublicKey = String(body.wg_public_key || '').trim();
     let wgPort = Number(body.wg_port) || 51820;
     const { data: existingHubs } = await supabaseAdmin.from('vps_hubs').select('wg_subnet');
-    let wgSubnet = String(body.wg_subnet || suggestNextVpsSubnet(existingHubs || []) || DEFAULT_WG_SUBNET).trim();
-    let wgInterface = String(body.wg_interface || 'wg0').trim();
+    let wgSubnet;
+    try {
+      wgSubnet = parseCidrSubnet(String(body.wg_subnet || '').trim() || suggestNextVpsSubnet(existingHubs || []) || DEFAULT_WG_SUBNET).cidr;
+    } catch (cidrErr) {
+      return NextResponse.json({ success: false, error: cidrErr.message }, { status: 400 });
+    }
+    const portStart = Number(body.port_range_start) || DEFAULT_PORT_RANGE_START;
+    const portEnd = Number(body.port_range_end) || DEFAULT_PORT_RANGE_END;
+    if (!Number.isInteger(portStart) || !Number.isInteger(portEnd) || portStart < 1024 || portEnd > 65535 || portStart > portEnd) {
+      return NextResponse.json({ success: false, error: 'port_range_start and port_range_end must be between 1024 and 65535 with start <= end' }, { status: 400 });
+    }
+    if (!Number.isInteger(wgPort) || wgPort < 1024 || wgPort > 65535) {
+      return NextResponse.json({ success: false, error: 'wg_port must be between 1024 and 65535' }, { status: 400 });
+    }
+    let wgInterface = String(body.wg_interface || 'wg0').replace(/[^a-zA-Z0-9_-]/g, '') || 'wg0';
     const maxRouters = Math.max(1, Number(body.max_routers) || DEFAULT_MAX_ROUTERS_PER_HUB);
     let status = 'unknown';
     let lastHealthAt = null;
@@ -133,8 +147,8 @@ export async function POST(request) {
         wg_port: wgPort,
         wg_public_key: wgPublicKey || null,
         wg_subnet: wgSubnet,
-        port_range_start: Number(body.port_range_start) || DEFAULT_PORT_RANGE_START,
-        port_range_end: Number(body.port_range_end) || DEFAULT_PORT_RANGE_END,
+        port_range_start: portStart,
+        port_range_end: portEnd,
         max_routers: maxRouters,
         is_active: body.is_active !== false,
         is_default: Boolean(body.is_default),
@@ -184,9 +198,18 @@ export async function PUT(request) {
     if (body.wg_interface !== undefined) updates.wg_interface = String(body.wg_interface).trim() || 'wg0';
     if (body.wg_port !== undefined) updates.wg_port = Number(body.wg_port) || 51820;
     if (body.wg_public_key !== undefined) updates.wg_public_key = String(body.wg_public_key).trim() || null;
-    if (body.wg_subnet !== undefined) updates.wg_subnet = String(body.wg_subnet).trim() || DEFAULT_WG_SUBNET;
+    if (body.wg_subnet !== undefined) {
+      try {
+        updates.wg_subnet = parseCidrSubnet(String(body.wg_subnet).trim() || DEFAULT_WG_SUBNET).cidr;
+      } catch (cidrErr) {
+        return NextResponse.json({ success: false, error: cidrErr.message }, { status: 400 });
+      }
+    }
     if (body.port_range_start !== undefined) updates.port_range_start = Number(body.port_range_start) || DEFAULT_PORT_RANGE_START;
     if (body.port_range_end !== undefined) updates.port_range_end = Number(body.port_range_end) || DEFAULT_PORT_RANGE_END;
+    if (updates.port_range_start !== undefined && updates.port_range_end !== undefined && updates.port_range_start > updates.port_range_end) {
+      return NextResponse.json({ success: false, error: 'port_range_start cannot exceed port_range_end' }, { status: 400 });
+    }
     if (body.max_routers !== undefined) updates.max_routers = Math.max(1, Number(body.max_routers) || DEFAULT_MAX_ROUTERS_PER_HUB);
     if (body.is_active !== undefined) updates.is_active = Boolean(body.is_active);
     if (body.is_default !== undefined) {

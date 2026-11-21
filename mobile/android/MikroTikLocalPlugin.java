@@ -35,14 +35,20 @@ public class MikroTikLocalPlugin extends Plugin {
         return new byte[]{(byte) 0xf0, (byte) ((len >>> 24) & 0xff), (byte) ((len >>> 16) & 0xff), (byte) ((len >>> 8) & 0xff), (byte) (len & 0xff)};
     }
 
+    private static int readByte(InputStream in) throws Exception {
+        int b = in.read();
+        if (b < 0) throw new Exception("Socket closed by router");
+        return b;
+    }
+
     private static int readLength(InputStream in) throws Exception {
-        int b0 = in.read();
-        if (b0 < 0) throw new Exception("Socket closed by router");
+        int b0 = readByte(in);
         if ((b0 & 0x80) == 0x00) return b0;
-        if ((b0 & 0xc0) == 0x80) return ((b0 & 0x3f) << 8) | in.read();
-        if ((b0 & 0xe0) == 0xc0) return ((b0 & 0x1f) << 16) | (in.read() << 8) | in.read();
-        if ((b0 & 0xf0) == 0xe0) return ((b0 & 0x0f) << 24) | (in.read() << 16) | (in.read() << 8) | in.read();
-        return (in.read() << 24) | (in.read() << 16) | (in.read() << 8) | in.read();
+        if ((b0 & 0xc0) == 0x80) return ((b0 & 0x3f) << 8) | readByte(in);
+        if ((b0 & 0xe0) == 0xc0) return ((b0 & 0x1f) << 16) | (readByte(in) << 8) | readByte(in);
+        if ((b0 & 0xf0) == 0xe0) return ((b0 & 0x0f) << 24) | (readByte(in) << 16) | (readByte(in) << 8) | readByte(in);
+        if (b0 == 0xf0) return (readByte(in) << 24) | (readByte(in) << 16) | (readByte(in) << 8) | readByte(in);
+        throw new Exception("Invalid RouterOS API length prefix byte: 0x" + Integer.toHexString(b0));
     }
 
     private static void writeSentence(OutputStream out, List<String> words) throws Exception {
@@ -139,7 +145,11 @@ public class MikroTikLocalPlugin extends Plugin {
                             Iterator<String> keys = params.keys();
                             while (keys.hasNext()) {
                                 String k = keys.next();
-                                words.add("=" + k + "=" + params.getString(k));
+                                if (k.startsWith("?") || ".tag".equals(k)) {
+                                    words.add(k + "=" + params.getString(k));
+                                } else {
+                                    words.add("=" + k + "=" + params.getString(k));
+                                }
                             }
                         }
                         results.put(runCommand(in, out, words));

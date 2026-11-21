@@ -5,6 +5,7 @@ import {
   selectVpsHubWithCapacity,
   allocateRouterSlotForHub,
   registerRouterPeerOnVps,
+  removeRouterPeerFromVps,
   testVpsHubConnection,
   isValidWgPublicKey,
   DEFAULT_WG_SUBNET,
@@ -126,7 +127,16 @@ export async function POST(request) {
         .select()
         .single();
 
-      if (insertErr) throw insertErr;
+      if (insertErr) {
+        // Roll back VPS WireGuard peer + DNAT rule so we never leak an orphaned peer
+        await removeRouterPeerFromVps(hub, {
+          publicKey: wgPublicKey,
+          tunnelIp: slot.wg_tunnel_ip,
+          externalPort: slot.external_port,
+          targetPort: 443,
+        }).catch(() => {});
+        throw insertErr;
+      }
 
       logger.info('Zero-touch local router onboarded:', {
         router_id: savedRouter.id,

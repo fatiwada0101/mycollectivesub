@@ -365,23 +365,23 @@ export default function LocationsTab({
   return (
     <div className="sa-tab-body">
       {/* KPI Cards Header */}
-      <div className="sa-kpi-grid">
+      <div className="sa-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
         <div className="sa-kpi-card">
           <span className="sa-kpi-label">Active Locations</span>
-          <span className="sa-kpi-val">{locations.length}</span>
-          <span className="sa-kpi-sub">Geofenced Hotspot Sites</span>
+          <span className="sa-kpi-value">{locations.length}</span>
+          <span className="sa-kpi-footer">Geofenced Hotspot Sites</span>
         </div>
         <div className="sa-kpi-card">
           <span className="sa-kpi-label">MikroTik Router Fleet</span>
-          <span className="sa-kpi-val">{routers.length}</span>
-          <span className="sa-kpi-sub">{onlineRoutersCount} Online / Connected</span>
+          <span className="sa-kpi-value">{routers.length}</span>
+          <span className="sa-kpi-footer">{onlineRoutersCount} Online / Connected</span>
         </div>
         <div className="sa-kpi-card sa-kpi-hero">
           <span className="sa-kpi-label">Smart Roaming Status</span>
-          <span className="sa-kpi-val" style={{ color: '#10B981', fontSize: '20px' }}>
+          <span className="sa-kpi-value" style={{ fontSize: '22px' }}>
             Active &amp; Unified
           </span>
-          <span className="sa-kpi-sub">Cross-Location Vouchers Enabled</span>
+          <span className="sa-kpi-footer">Cross-Location Vouchers Enabled</span>
         </div>
       </div>
 
@@ -440,7 +440,7 @@ export default function LocationsTab({
               setShowRouterModal(true);
             }}
           >
-            <CpuIcon size={15} /> <span>Add Router</span>
+            <CpuIcon size={15} /> <span>Manual Router</span>
           </button>
           <button
             className="sa-action-btn sa-btn-primary"

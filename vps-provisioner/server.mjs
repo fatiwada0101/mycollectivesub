@@ -135,6 +135,7 @@ export function createProvisionerServer(options = {}) {
     wgConfPath: options.wgConfPath ?? process.env.WG_CONF_PATH ?? '/etc/wireguard/wg0.conf',
     wgPublicKeyPath: options.wgPublicKeyPath ?? process.env.WG_PUBLIC_KEY_PATH ?? '/etc/wireguard/server_public.key',
     publicIp: options.publicIp ?? process.env.VPS_PUBLIC_IP ?? '',
+    provisionerPort: Number(options.provisionerPort ?? process.env.PROVISIONER_PORT ?? 9443),
     skipPerPortUfw: Boolean(options.skipPerPortUfw ?? (process.env.SKIP_PER_PORT_UFW === '1' || process.env.SKIP_PER_PORT_UFW === 'true')),
     dryRun: Boolean(options.dryRun ?? (process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true')),
     dryRunPublicKey: options.dryRunPublicKey ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
@@ -187,6 +188,11 @@ export function createProvisionerServer(options = {}) {
     if (!isValidWgPublicKey(publicKey)) throw new Error('Invalid WireGuard public key format');
     if (!isValidIpv4(tunnelIp)) throw new Error('Invalid WireGuard tunnel IPv4 address');
     if (!isValidPort(externalPort)) throw new Error('Invalid external forwarding port (must be 1024-65535)');
+    const extPortNum = Number(externalPort);
+    const reservedPorts = new Set([22, 80, 443, cfg.provisionerPort || 9443, cfg.wgPort || 51820]);
+    if (reservedPorts.has(extPortNum)) {
+      throw new Error(`Invalid external forwarding port: port ${extPortNum} is reserved by the VPS hub`);
+    }
     const dstPort = Number(targetPort) || 443;
     if (!Number.isInteger(dstPort) || dstPort < 1 || dstPort > 65535) throw new Error('Invalid target router port');
 

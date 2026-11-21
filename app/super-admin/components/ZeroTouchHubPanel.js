@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export default function ZeroTouchHubPanel({
   adminHeaders = () => ({}),
@@ -9,17 +9,35 @@ export default function ZeroTouchHubPanel({
   onRouterOnboarded = () => {},
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [activeView, setActiveView] = useState('onboard'); // 'onboard' | 'vps'
+  const [activeTab, setActiveTab] = useState('router'); // 'router' | 'servers'
   const [hubs, setHubs] = useState([]);
   const [fleetSummary, setFleetSummary] = useState(null);
   const [needsMigration, setNeedsMigration] = useState(false);
   const [loadingHubs, setLoadingHubs] = useState(false);
+
+  // Router onboarding state
+  const [onboardForm, setOnboardForm] = useState({
+    router_name: '',
+    router_state: 'existing', // 'existing' | 'fresh'
+    location_id: '',
+    vps_hub_id: '',
+    dns_name: 'hotspot.mycollectivesub.net',
+  });
+  const [showRouterAdvanced, setShowRouterAdvanced] = useState(false);
+  const [showLaptopHelper, setShowLaptopHelper] = useState(false);
+  const [generatingBootstrap, setGeneratingBootstrap] = useState(false);
+  const [bootstrapResult, setBootstrapResult] = useState(null);
+  const [checkingRouter, setCheckingRouter] = useState(false);
+  const [routerVerifiedOnline, setRouterVerifiedOnline] = useState(false);
+
+  // Server (VPS) management state
+  const [serverAddMode, setServerAddMode] = useState(null); // null | 'auto' | 'manual'
+  const [showServerAdvanced, setShowServerAdvanced] = useState(false);
+  const [scriptTab, setScriptTab] = useState('existing'); // 'existing' | 'fresh'
+  const [enrollingVps, setEnrollingVps] = useState(false);
+  const [savingHub, setSavingHub] = useState(false);
   const [testingHubId, setTestingHubId] = useState(null);
   const [migratingHubId, setMigratingHubId] = useState(null);
-  const [savingHub, setSavingHub] = useState(false);
-  const [showAddHub, setShowAddHub] = useState(false);
-  const [showAutoEnrollVps, setShowAutoEnrollVps] = useState(false);
-  const [enrollingVps, setEnrollingVps] = useState(false);
   const [vpsBootstrap, setVpsBootstrap] = useState(null);
 
   const [vpsAutoForm, setVpsAutoForm] = useState({
@@ -41,24 +59,17 @@ export default function ZeroTouchHubPanel({
     is_default: true,
   });
 
-  const [onboardForm, setOnboardForm] = useState({
-    router_name: '',
-    vps_hub_id: '',
-    location_id: '',
-    dns_name: 'hotspot.mycollectivesub.net',
-    router_state: 'existing', // 'existing' (safe preserve) | 'fresh' (full setup)
-  });
-  const [generatingBootstrap, setGeneratingBootstrap] = useState(false);
-  const [bootstrapResult, setBootstrapResult] = useState(null);
-  const [checkingRouter, setCheckingRouter] = useState(false);
+  const adminHeadersRef = useRef(adminHeaders);
+  adminHeadersRef.current = adminHeaders;
 
   const fetchHubs = useCallback(async () => {
     setLoadingHubs(true);
     try {
-      const res = await fetch('/api/super-admin/vps-hubs', { headers: adminHeaders() });
+      const res = await fetch('/api/super-admin/vps-hubs', { headers: adminHeadersRef.current() });
       const data = await res.json();
       if (data.success) {
-        setHubs(data.hubs || []);
+        const list = data.hubs || [];
+        setHubs(list);
         setFleetSummary(data.fleet_summary || null);
         setNeedsMigration(Boolean(data.needs_migration));
         const nextSubnet = data.fleet_summary?.suggested_next_subnet;
@@ -66,184 +77,54 @@ export default function ZeroTouchHubPanel({
           setVpsAutoForm((prev) => ({
             ...prev,
             wg_subnet: prev.name ? prev.wg_subnet : nextSubnet,
-            is_default: (data.hubs || []).length === 0,
+            is_default: list.length === 0,
           }));
           setHubForm((prev) => ({
             ...prev,
             wg_subnet: prev.name ? prev.wg_subnet : nextSubnet,
-            is_default: (data.hubs || []).length === 0,
+            is_default: list.length === 0,
           }));
         }
       }
     } catch (e) {
-      console.warn('VPS hubs load warning:', e.message);
+      console.warn('Cloud servers load warning:', e.message);
     } finally {
       setLoadingHubs(false);
     }
-  }, [adminHeaders]);
+  }, []);
 
+  // Load summary badge silently on mount so header pill shows accurate live status
   useEffect(() => {
-    if (expanded) fetchHubs();
-  }, [expanded, fetchHubs]);
+    fetchHubs();
+  }, [fetchHubs]);
 
   const onlineHubs = hubs.filter((h) => h.status === 'online');
+  const totalUsed = fleetSummary?.total_routers_on_hubs ?? 0;
+  const totalCap = fleetSummary?.total_capacity ?? 0;
+  const fleetPct = totalCap > 0 ? Math.min(100, Math.round((totalUsed / totalCap) * 100)) : 0;
 
-  const handleSaveHub = async (e) => {
-    e.preventDefault();
-    if (!hubForm.name.trim() || !hubForm.public_ip.trim() || !hubForm.api_secret.trim()) {
-      showToast('Please enter Hub Name, Public IP, and API Secret', 'error');
-      return;
-    }
-    setSavingHub(true);
-    try {
-      const payload = {
-        ...hubForm,
-        provisioner_url: hubForm.provisioner_url.trim() || `https://${hubForm.public_ip.trim()}:9443`,
-      };
-      const res = await fetch('/api/super-admin/vps-hubs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        showToast(data.error || 'Could not register VPS hub', 'error');
-        return;
-      }
-      showToast(
-        data.health?.ok
-          ? `✓ VPS Hub "${data.hub.name}" is online & ready — no SSH needed again!`
-          : `VPS Hub "${data.hub.name}" saved (health check: ${data.health?.error || 'pending'})`,
-        data.health?.ok ? 'success' : 'info'
-      );
-      setHubForm({
-        name: '',
-        public_ip: '',
-        provisioner_url: '',
-        api_secret: '',
-        wg_subnet: fleetSummary?.suggested_next_subnet || '10.100.0.0/16',
-        port_range_start: 8443,
-        port_range_end: 18442,
-        max_routers: 1000,
-        is_default: false,
-      });
-      setShowAddHub(false);
-      await fetchHubs();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setSavingHub(false);
-    }
+  const openPanel = (tab) => {
+    setActiveTab(tab);
+    setExpanded(true);
+    fetchHubs();
   };
 
-  const handleAutoEnrollVps = async (e) => {
-    e.preventDefault();
-    if (!vpsAutoForm.name.trim()) {
-      showToast('Give your VPS hub a name first (e.g. Hostinger Hub 1)', 'error');
-      return;
-    }
-    setEnrollingVps(true);
-    setVpsBootstrap(null);
-    try {
-      const res = await fetch('/api/super-admin/vps-hubs/bootstrap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
-        body: JSON.stringify(vpsAutoForm),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        showToast(data.error || 'Could not generate VPS auto-enroll script', 'error');
-        return;
-      }
-      setVpsBootstrap(data);
-      showToast(`✓ One-time setup script ready for "${data.hub.name}"`, 'success');
-      await fetchHubs();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setEnrollingVps(false);
-    }
-  };
-
-  const handleTestHub = async (hubId) => {
-    setTestingHubId(hubId);
-    try {
-      const res = await fetch('/api/super-admin/vps-hubs', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
-        body: JSON.stringify({ id: hubId }),
-      });
-      const data = await res.json();
-      if (data.success && data.health?.ok) {
-        showToast(`✓ VPS online (${data.health.latencyMs}ms, ${data.health.peerCount} router tunnels)`, 'success');
-      } else {
-        showToast(`VPS unreachable: ${data.error || 'Verify port 9443 is open'}`, 'error');
-      }
-      await fetchHubs();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setTestingHubId(null);
-    }
-  };
-
-  const handleMigrateToHub = async (hub) => {
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm(`Switch all active routers to "${hub.name}" (${hub.public_ip})? Routers will automatically failover to this VPS within 60 seconds with zero SSH.`)
-    ) return;
-    setMigratingHubId(hub.id);
-    try {
-      const res = await fetch('/api/super-admin/vps-hubs/migrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
-        body: JSON.stringify({ target_vps_hub_id: hub.id }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        showToast(data.error || 'Migration failed', 'error');
-        return;
-      }
-      showToast(
-        `✓ Moved ${data.migrated_count}/${data.total_routers} router(s) to "${hub.name}". Routers will reconnect automatically within 60s!`,
-        'success'
-      );
-      await fetchHubs();
-      onRouterOnboarded?.();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setMigratingHubId(null);
-    }
-  };
-
-  const handleDeleteHub = async (hub) => {
-    if (typeof window !== 'undefined' && !window.confirm(`Remove VPS Hub "${hub.name}"?`)) return;
-    try {
-      const res = await fetch(`/api/super-admin/vps-hubs?id=${encodeURIComponent(hub.id)}`, {
-        method: 'DELETE',
-        headers: adminHeaders(),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`Removed VPS hub "${hub.name}"`, 'success');
-        await fetchHubs();
-      } else {
-        showToast(data.error || 'Delete failed', 'error');
-      }
-    } catch (err) {
-      showToast(err.message, 'error');
+  const copyText = (text, label) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      showToast(`Copied ${label}`, 'success');
     }
   };
 
   const handleGenerateBootstrap = async (e) => {
     e.preventDefault();
     if (!onboardForm.router_name.trim()) {
-      showToast('Enter a router name first (e.g. Branch 2 Router)', 'error');
+      showToast('Enter a router name first (e.g. Katsina Branch 2)', 'error');
       return;
     }
     setGeneratingBootstrap(true);
     setBootstrapResult(null);
+    setRouterVerifiedOnline(false);
     try {
       const res = await fetch('/api/super-admin/routers/onboard', {
         method: 'POST',
@@ -263,8 +144,9 @@ export default function ZeroTouchHubPanel({
         return;
       }
       setBootstrapResult(data);
-      showToast(`✓ 1-Line Setup Command ready for "${data.router.name}"`, 'success');
+      showToast(`Setup line ready for "${data.router.name}"`, 'success');
       onRouterOnboarded?.();
+      fetchHubs();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -281,10 +163,11 @@ export default function ZeroTouchHubPanel({
       });
       const data = await res.json();
       if (data.connected || data.success) {
-        showToast(`🎉 "${bootstrapResult.router.name}" is ONLINE and ready to generate vouchers!`, 'success');
+        setRouterVerifiedOnline(true);
+        showToast(`"${bootstrapResult.router.name}" is online and ready to sell vouchers!`, 'success');
         onRouterOnboarded?.();
       } else {
-        showToast('Not connected yet — make sure you pasted the 1 line in Router Terminal and waited ~10s.', 'info');
+        showToast('Not online yet — paste the line in Router Terminal and wait ~10 seconds, then try again.', 'info');
       }
     } catch (err) {
       showToast(err.message, 'error');
@@ -293,284 +176,356 @@ export default function ZeroTouchHubPanel({
     }
   };
 
-  const copyText = (text, label) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      showToast(`✓ Copied ${label}`, 'success');
+  const handleAutoEnrollVps = async (e) => {
+    e.preventDefault();
+    if (!vpsAutoForm.name.trim()) {
+      showToast('Give your server a name (e.g. Hostinger Hub 1)', 'error');
+      return;
+    }
+    setEnrollingVps(true);
+    setVpsBootstrap(null);
+    try {
+      const res = await fetch('/api/super-admin/vps-hubs/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+        body: JSON.stringify(vpsAutoForm),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.error || 'Could not generate server setup script', 'error');
+        return;
+      }
+      setVpsBootstrap(data);
+      showToast(`Setup script ready for "${data.hub.name}"`, 'success');
+      await fetchHubs();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setEnrollingVps(false);
     }
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '9px 11px',
-    borderRadius: '9px',
-    border: '1px solid #334155',
-    background: '#0b1324',
-    color: '#fff',
-    fontSize: '13px',
+  const handleSaveManualHub = async (e) => {
+    e.preventDefault();
+    if (!hubForm.name.trim() || !hubForm.public_ip.trim() || !hubForm.api_secret.trim()) {
+      showToast('Enter Server Name, Public IP, and API Secret', 'error');
+      return;
+    }
+    setSavingHub(true);
+    try {
+      const payload = {
+        ...hubForm,
+        provisioner_url: hubForm.provisioner_url.trim() || `https://${hubForm.public_ip.trim()}:9443`,
+      };
+      const res = await fetch('/api/super-admin/vps-hubs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.error || 'Could not save server', 'error');
+        return;
+      }
+      showToast(
+        data.health?.ok
+          ? `"${data.hub.name}" connected and online!`
+          : `"${data.hub.name}" saved (${data.health?.error || 'pending connection'})`,
+        data.health?.ok ? 'success' : 'info'
+      );
+      setHubForm({
+        name: '',
+        public_ip: '',
+        provisioner_url: '',
+        api_secret: '',
+        wg_subnet: fleetSummary?.suggested_next_subnet || '10.100.0.0/16',
+        port_range_start: 8443,
+        port_range_end: 18442,
+        max_routers: 1000,
+        is_default: false,
+      });
+      setServerAddMode(null);
+      await fetchHubs();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSavingHub(false);
+    }
+  };
+
+  const handleTestHub = async (hubId) => {
+    setTestingHubId(hubId);
+    try {
+      const res = await fetch('/api/super-admin/vps-hubs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+        body: JSON.stringify({ id: hubId }),
+      });
+      const data = await res.json();
+      if (data.success && data.health?.ok) {
+        showToast(`Online (${data.health.latencyMs}ms, ${data.health.peerCount} active tunnels)`, 'success');
+      } else {
+        showToast(`Unreachable: ${data.error || 'Check server port 9443'}`, 'error');
+      }
+      await fetchHubs();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setTestingHubId(null);
+    }
+  };
+
+  const handleMigrateToHub = async (hub) => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(`Move all active routers to "${hub.name}" (${hub.public_ip})? Connected routers will switch automatically within 60 seconds.`)
+    ) return;
+    setMigratingHubId(hub.id);
+    try {
+      const res = await fetch('/api/super-admin/vps-hubs/migrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+        body: JSON.stringify({ target_vps_hub_id: hub.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.error || 'Could not switch routers', 'error');
+        return;
+      }
+      showToast(`Switched ${data.migrated_count}/${data.total_routers} router(s) to "${hub.name}". Reconnecting within 60s.`, 'success');
+      await fetchHubs();
+      onRouterOnboarded?.();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setMigratingHubId(null);
+    }
+  };
+
+  const handleDeleteHub = async (hub) => {
+    if (typeof window !== 'undefined' && !window.confirm(`Remove server "${hub.name}"?`)) return;
+    try {
+      const res = await fetch(`/api/super-admin/vps-hubs?id=${encodeURIComponent(hub.id)}`, {
+        method: 'DELETE',
+        headers: adminHeaders(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Removed "${hub.name}"`, 'success');
+        await fetchHubs();
+      } else {
+        showToast(data.error || 'Remove failed', 'error');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
   };
 
   return (
-    <div
-      style={{
-        margin: '20px 0 8px',
-        borderRadius: '16px',
-        background: 'linear-gradient(135deg, #0b1f3a 0%, #102a52 65%, #0c3562 100%)',
-        border: '1px solid rgba(56, 189, 248, 0.38)',
-        overflow: 'hidden',
-        color: '#f8fafc',
-      }}
-    >
-      {/* Header Banner */}
-      <div
-        onClick={() => setExpanded((prev) => !prev)}
-        style={{
-          padding: '16px 20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          cursor: 'pointer',
-          gap: '12px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span
-              style={{
-                background: 'rgba(14, 165, 233, 0.22)',
-                border: '1px solid rgba(56, 189, 248, 0.45)',
-                color: '#7dd3fc',
-                fontSize: '10.5px',
-                fontWeight: 800,
-                padding: '2px 9px',
-                borderRadius: '999px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}
-            >
-              Easy Router Onboarding • Zero SSH
-            </span>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>
-              Connect New or Existing MikroTik Routers &amp; VPS Hubs
-            </h3>
-          </div>
-          <p style={{ margin: '5px 0 0', fontSize: '12.5px', color: '#bae6fd' }}>
-            Connect already-configured routers (preserving existing Hotspot &amp; users) or brand-new routers in seconds — no SSH needed.
-          </p>
-        </div>
-        <button
-          type="button"
-          style={{
-            background: '#0284c7',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '10px',
-            padding: '9px 15px',
-            fontSize: '12.5px',
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
+    <div className="ux-panel">
+      {/* Clean Header Bar */}
+      <div className="ux-panel-header">
+        <div
+          className="ux-panel-title-wrap"
+          style={{ cursor: 'pointer', flex: 1 }}
+          onClick={() => setExpanded((prev) => !prev)}
         >
-          {expanded ? 'Hide Setup Hub ▲' : 'Open Easy Setup Hub ▼'}
-        </button>
+          <div className={`ux-icon-badge ${onlineHubs.length > 0 ? 'green' : ''}`}>
+            ⚡
+          </div>
+          <div>
+            <h3 className="ux-title">
+              Easy Router Setup
+              {onlineHubs.length > 0 ? (
+                <span className="ux-pill green">
+                  <span className="ux-dot" />
+                  {onlineHubs.length} Cloud {onlineHubs.length === 1 ? 'Server' : 'Servers'} Online
+                  {totalCap > 0 ? ` • ${totalUsed}/${totalCap.toLocaleString()}` : ''}
+                </span>
+              ) : (
+                <span className="ux-pill blue">Zero SSH</span>
+              )}
+            </h3>
+            <p className="ux-subtitle">
+              Connect already-configured or new MikroTik routers in 1 step, and scale across cloud servers automatically.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="ux-btn ux-btn-primary ux-btn-sm"
+            onClick={() => openPanel('router')}
+          >
+            + Connect Router
+          </button>
+          <button
+            type="button"
+            className="ux-btn ux-btn-secondary ux-btn-sm"
+            onClick={() => openPanel('servers')}
+          >
+            Cloud Servers ({hubs.length})
+          </button>
+          {expanded && (
+            <button
+              type="button"
+              className="ux-btn ux-btn-secondary ux-btn-sm"
+              onClick={() => setExpanded(false)}
+              aria-label="Collapse setup panel"
+            >
+              Close ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {expanded && (
-        <div style={{ padding: '14px 20px 20px', borderTop: '1px solid rgba(148, 163, 184, 0.2)' }}>
-          {/* 3-Step Friendly Status Strip */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '10px',
-              marginBottom: '16px',
-            }}
-          >
-            <div
-              onClick={() => setActiveView('vps')}
-              style={{
-                cursor: 'pointer',
-                background: onlineHubs.length > 0 ? 'rgba(22, 163, 74, 0.14)' : 'rgba(2, 132, 199, 0.16)',
-                border: onlineHubs.length > 0 ? '1px solid rgba(74, 222, 128, 0.4)' : '1px solid rgba(56, 189, 248, 0.4)',
-                borderRadius: '11px',
-                padding: '10px 12px',
-              }}
-            >
-              <div style={{ fontSize: '11px', fontWeight: 800, color: onlineHubs.length > 0 ? '#4ade80' : '#7dd3fc', textTransform: 'uppercase' }}>
-                Step 1 • Cloud VPS Hub {onlineHubs.length > 0 ? '✓ Ready' : '(Do Once)'}
-              </div>
-              <div style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '3px' }}>
-                {onlineHubs.length > 0
-                  ? `${onlineHubs.length} VPS hub online — zero SSH ever needed again.`
-                  : 'Connect your VPS once (no SSH needed for routers after).'}
-              </div>
+        <div className="ux-panel-body">
+          {/* Clean Segmented Tabs */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div className="ux-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'router'}
+                className={`ux-tab ${activeTab === 'router' ? 'active' : ''}`}
+                onClick={() => setActiveTab('router')}
+              >
+                Connect Router
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'servers'}
+                className={`ux-tab ${activeTab === 'servers' ? 'active' : ''}`}
+                onClick={() => setActiveTab('servers')}
+              >
+                Cloud Servers
+                <span className={`ux-pill ${onlineHubs.length > 0 ? 'green' : ''}`}>{hubs.length}</span>
+              </button>
             </div>
-
-            <div
-              onClick={() => setActiveView('onboard')}
-              style={{
-                cursor: 'pointer',
-                background: 'rgba(15, 23, 42, 0.5)',
-                border: '1px solid rgba(148, 163, 184, 0.28)',
-                borderRadius: '11px',
-                padding: '10px 12px',
-              }}
-            >
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#93c5fd', textTransform: 'uppercase' }}>
-                Step 2 • Connect Any Router
-              </div>
-              <div style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '3px' }}>
-                Works 100% from web (1-line paste) OR Laptop Plug &amp; Play.
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: 'rgba(15, 23, 42, 0.5)',
-                border: '1px solid rgba(74, 222, 128, 0.25)',
-                borderRadius: '11px',
-                padding: '10px 12px',
-              }}
-            >
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#86efac', textTransform: 'uppercase' }}>
-                Step 3 • Default Voucher Rules
-              </div>
-              <div style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '3px' }}>
-                Starts on first login • Expires online &amp; offline (10s) • Auto-reconnects on Wi-Fi toggle.
-              </div>
-            </div>
-          </div>
-
-          {/* Sub-tabs */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => setActiveView('onboard')}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '10px',
-                border: activeView === 'onboard' ? '1px solid #38bdf8' : '1px solid rgba(148,163,184,0.28)',
-                background: activeView === 'onboard' ? 'rgba(2, 132, 199, 0.35)' : 'rgba(15, 23, 42, 0.45)',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '12.5px',
-                cursor: 'pointer',
-              }}
-            >
-              ⚡ Connect a Router ({onlineHubs.length > 0 ? 'Ready' : 'Needs Step 1'})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveView('vps')}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '10px',
-                border: activeView === 'vps' ? '1px solid #38bdf8' : '1px solid rgba(148,163,184,0.28)',
-                background: activeView === 'vps' ? 'rgba(2, 132, 199, 0.35)' : 'rgba(15, 23, 42, 0.45)',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '12.5px',
-                cursor: 'pointer',
-              }}
-            >
-              🌐 VPS Hubs ({hubs.length})
-            </button>
           </div>
 
           {needsMigration && (
-            <div
-              style={{
-                background: 'rgba(217, 119, 6, 0.16)',
-                border: '1px solid rgba(251, 191, 36, 0.5)',
-                borderRadius: '10px',
-                padding: '10px 14px',
-                marginBottom: '14px',
-                fontSize: '12.5px',
-                color: '#fef3c7',
-              }}
-            >
-              <strong>Database Migration Needed:</strong> Run <code>supabase/migrations/20261121000001_zero_touch_vps_hubs.sql</code>.
+            <div className="ux-alert-bar" style={{ marginTop: 0 }}>
+              <span>Database setup pending — apply migration <code>20261121000001_zero_touch_vps_hubs.sql</code>.</span>
             </div>
           )}
 
-          {/* VIEW 1: CONNECT A ROUTER */}
-          {activeView === 'onboard' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: '14px' }}>
-              {/* Option 1: 100% Web-Only (Works from Phone or Laptop Browser, No App Install) */}
-              <form
-                onSubmit={handleGenerateBootstrap}
-                style={{
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  borderRadius: '12px',
-                  padding: '16px',
-                }}
-              >
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  Easiest • 100% Web (No App Install Needed)
+          {/* ── TAB 1: CONNECT A ROUTER ── */}
+          {activeTab === 'router' && (
+            <div className="ux-form-card">
+              {hubs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '18px 12px' }}>
+                  <div style={{ fontSize: '28px', marginBottom: '6px' }}>🌐</div>
+                  <h4 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: 800 }}>
+                    Step 1: Add Your First Cloud Server (Done Once)
+                  </h4>
+                  <p className="ux-subtitle" style={{ maxWidth: '460px', margin: '0 auto 14px' }}>
+                    Connect your Ubuntu VPS once with a single command. After that, every MikroTik router connects automatically with zero SSH.
+                  </p>
+                  <button
+                    type="button"
+                    className="ux-btn ux-btn-primary"
+                    onClick={() => {
+                      setActiveTab('servers');
+                      setServerAddMode('auto');
+                    }}
+                  >
+                    Set Up Cloud Server →
+                  </button>
                 </div>
-                <h4 style={{ margin: '0 0 8px', fontSize: '15px', color: '#fff' }}>
-                  Connect Router via 1-Line Command
-                </h4>
-                <p style={{ margin: '0 0 12px', fontSize: '12.5px', color: '#cbd5e1', lineHeight: 1.5 }}>
-                  Works from any phone or laptop browser. Generates one safe line you paste into the router&apos;s Terminal — zero VPS SSH required.
-                </p>
-
-                <div style={{ display: 'grid', gap: '10px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px', fontWeight: 600 }}>
-                      1. Router Name
-                    </label>
-                    <input
-                      type="text"
-                      value={onboardForm.router_name}
-                      onChange={(e) => setOnboardForm((p) => ({ ...p, router_name: e.target.value }))}
-                      placeholder="e.g. Katsina Branch 2"
-                      style={inputStyle}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px', fontWeight: 600 }}>
-                      2. Is this router already configured?
-                    </label>
-                    <select
-                      value={onboardForm.router_state}
-                      onChange={(e) => setOnboardForm((p) => ({ ...p, router_state: e.target.value }))}
-                      style={inputStyle}
-                    >
-                      <option value="existing">Already Configured — Keep Hotspot, Users &amp; DNS (Just connect to Cloud &amp; generate vouchers)</option>
-                      <option value="fresh">Brand-New Router — Set up Hotspot DNS &amp; Full Cloud Profile</option>
-                    </select>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              ) : bootstrapResult?.bootstrap?.one_line_command ? (
+                /* Clean 3-Step Result Card */
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px', fontWeight: 600 }}>
-                        3. VPS Hub
-                      </label>
-                      <select
-                        value={onboardForm.vps_hub_id}
-                        onChange={(e) => setOnboardForm((p) => ({ ...p, vps_hub_id: e.target.value }))}
-                        style={inputStyle}
+                      <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>
+                        {routerVerifiedOnline ? '🎉 Router Connected!' : `Ready to Connect "${bootstrapResult.router.name}"`}
+                      </h4>
+                      <p className="ux-subtitle">
+                        Assigned server: <strong>{bootstrapResult.vps.name}</strong> ({bootstrapResult.vps.public_ip}:{bootstrapResult.vps.external_port})
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ux-btn ux-btn-secondary ux-btn-sm"
+                      onClick={() => {
+                        setBootstrapResult(null);
+                        setRouterVerifiedOnline(false);
+                        setOnboardForm((p) => ({ ...p, router_name: '' }));
+                      }}
+                    >
+                      + Connect Another
+                    </button>
+                  </div>
+
+                  <div className="ux-code-wrap">
+                    <div className="ux-code-top">
+                      <span>1-Line MikroTik Terminal Command</span>
+                      <button
+                        type="button"
+                        className="ux-btn ux-btn-primary ux-btn-sm"
+                        onClick={() => copyText(bootstrapResult.bootstrap.one_line_command, 'setup command')}
                       >
-                        <option value="">Auto-Select (Auto-Scale across Online Hubs)</option>
-                        {hubs.map((h) => (
-                          <option key={h.id} value={h.id}>
-                            {h.name} ({h.router_count ?? 0}/{h.effective_capacity ?? h.max_routers ?? 1000} routers • {h.public_ip || 'pending'})
-                          </option>
-                        ))}
-                      </select>
+                        Copy Line
+                      </button>
+                    </div>
+                    <pre className="ux-code-body">{bootstrapResult.bootstrap.one_line_command}</pre>
+                  </div>
+
+                  <div className="ux-steps">
+                    <div className="ux-step-row">
+                      <span className="ux-step-num">1</span>
+                      <span>Connect to the router&apos;s Wi-Fi and open <code>http://192.168.88.1</code> (WebFig) or WinBox.</span>
+                    </div>
+                    <div className="ux-step-row">
+                      <span className="ux-step-num">2</span>
+                      <span>Open <strong>Terminal</strong>, paste the line above, and press <strong>Enter</strong>.</span>
+                    </div>
+                    <div className="ux-step-row">
+                      <span className="ux-step-num">3</span>
+                      <span>Wait ~10 seconds, then verify the connection below.</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={`ux-btn ${routerVerifiedOnline ? 'ux-btn-success' : 'ux-btn-primary'}`}
+                      onClick={handleCheckConnected}
+                      disabled={checkingRouter}
+                    >
+                      {checkingRouter
+                        ? 'Checking...'
+                        : routerVerifiedOnline
+                          ? '✓ Router Is Online — Ready for Vouchers'
+                          : 'Check Connection Now'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Clean 3-Field Form */
+                <form onSubmit={handleGenerateBootstrap} style={{ display: 'grid', gap: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <div>
+                      <label className="ux-label">Router Name</label>
+                      <input
+                        type="text"
+                        className="ux-input"
+                        value={onboardForm.router_name}
+                        onChange={(e) => setOnboardForm((p) => ({ ...p, router_name: e.target.value }))}
+                        placeholder="e.g. Katsina Branch 2"
+                        required
+                      />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px', fontWeight: 600 }}>
-                        4. Location (Optional)
-                      </label>
+                      <label className="ux-label">Location (Optional)</label>
                       <select
+                        className="ux-input"
                         value={onboardForm.location_id}
                         onChange={(e) => setOnboardForm((p) => ({ ...p, location_id: e.target.value }))}
-                        style={inputStyle}
                       >
                         <option value="">Unassigned</option>
                         {locations.map((l) => (
@@ -580,402 +535,382 @@ export default function ZeroTouchHubPanel({
                     </div>
                   </div>
 
-                  {hubs.length === 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => { setActiveView('vps'); setShowAutoEnrollVps(true); }}
-                      style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 14px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
-                    >
-                      First: Connect Your VPS Hub Once →
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      disabled={generatingBootstrap}
-                      style={{
-                        background: 'linear-gradient(135deg, #0284c7, #0ea5e9)',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '9px',
-                        padding: '10px 14px',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: generatingBootstrap ? 'not-allowed' : 'pointer',
-                        opacity: generatingBootstrap ? 0.6 : 1,
-                      }}
-                    >
-                      {generatingBootstrap ? 'Preparing Setup Command...' : 'Get 1-Line Setup Command'}
-                    </button>
-                  )}
-                </div>
-
-                {bootstrapResult?.bootstrap?.one_line_command && (
-                  <div style={{ marginTop: '14px', background: '#070d1a', borderRadius: '10px', padding: '12px', border: '1px solid #0284c7' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px' }}>
-                      <span style={{ fontSize: '11.5px', color: '#7dd3fc', fontWeight: 700 }}>
-                        Tunnel: {bootstrapResult.vps.wg_tunnel_ip} → {bootstrapResult.vps.public_ip}:{bootstrapResult.vps.external_port}
-                      </span>
+                  <div>
+                    <label className="ux-label">Is this router already set up?</label>
+                    <div className="ux-choice-grid">
                       <button
                         type="button"
-                        onClick={() => copyText(bootstrapResult.bootstrap.one_line_command, '1-line router command')}
-                        style={{ background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+                        className={`ux-choice-card ${onboardForm.router_state === 'existing' ? 'selected' : ''}`}
+                        onClick={() => setOnboardForm((p) => ({ ...p, router_state: 'existing' }))}
                       >
-                        Copy Line
+                        <span className="ux-choice-title">
+                          Already Configured
+                          <span className="ux-pill green">Recommended</span>
+                        </span>
+                        <span className="ux-choice-desc">
+                          Keeps existing Hotspot, DNS &amp; users untouched. Just links to cloud so you can sell vouchers.
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`ux-choice-card ${onboardForm.router_state === 'fresh' ? 'selected' : ''}`}
+                        onClick={() => setOnboardForm((p) => ({ ...p, router_state: 'fresh' }))}
+                      >
+                        <span className="ux-choice-title">
+                          Brand-New Router
+                          {onboardForm.router_state === 'fresh' && <span className="ux-pill blue">Selected</span>}
+                        </span>
+                        <span className="ux-choice-desc">
+                          Fresh MikroTik out of the box. Configures Hotspot DNS and full cloud setup automatically.
+                        </span>
                       </button>
                     </div>
-                    <code style={{ fontSize: '11px', color: '#e2e8f0', wordBreak: 'break-all', display: 'block', marginBottom: '10px' }}>
-                      {bootstrapResult.bootstrap.one_line_command}
-                    </code>
-                    <div style={{ fontSize: '11.5px', color: '#cbd5e1', lineHeight: 1.55, marginBottom: '10px' }}>
-                      <strong>How to apply (10 seconds):</strong><br />
-                      1. Connect to the router&apos;s Wi-Fi and open <code>http://192.168.88.1</code> (WebFig) or WinBox.<br />
-                      2. Click <strong>Terminal</strong>, paste the line above, and press <strong>Enter</strong>.<br />
-                      3. Click the button below — your router will appear <strong>Online</strong> ready to generate vouchers!
+                  </div>
+
+                  {/* Progressive Disclosure: Advanced Options */}
+                  <div>
+                    <button
+                      type="button"
+                      className="ux-link-btn"
+                      onClick={() => setShowRouterAdvanced((v) => !v)}
+                    >
+                      {showRouterAdvanced ? '▾ Hide advanced options' : '▸ Advanced options (Cloud server & DNS)'}
+                    </button>
+
+                    {showRouterAdvanced && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '10px' }}>
+                        <div>
+                          <label className="ux-label">Cloud Server</label>
+                          <select
+                            className="ux-input"
+                            value={onboardForm.vps_hub_id}
+                            onChange={(e) => setOnboardForm((p) => ({ ...p, vps_hub_id: e.target.value }))}
+                          >
+                            <option value="">Auto-Select (Recommended — Auto-scales)</option>
+                            {hubs.map((h) => (
+                              <option key={h.id} value={h.id}>
+                                {h.name} ({h.router_count ?? 0}/{(h.effective_capacity ?? h.max_routers ?? 1000).toLocaleString()} routers)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="ux-label">Hotspot DNS Name</label>
+                          <input
+                            type="text"
+                            className="ux-input"
+                            value={onboardForm.dns_name}
+                            onChange={(e) => setOnboardForm((p) => ({ ...p, dns_name: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <button
+                      type="submit"
+                      className="ux-btn ux-btn-primary"
+                      disabled={generatingBootstrap}
+                    >
+                      {generatingBootstrap ? 'Generating...' : 'Get 1-Line Setup Command'}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="ux-link-btn"
+                      onClick={() => setShowLaptopHelper((v) => !v)}
+                    >
+                      {showLaptopHelper ? 'Hide Laptop Connector' : 'Prefer IP + Password (No Terminal)? ▸'}
+                    </button>
+                  </div>
+
+                  {showLaptopHelper && (
+                    <div className="ux-row-card" style={{ marginTop: '2px' }}>
+                      <div style={{ fontSize: '12.5px', lineHeight: 1.5 }}>
+                        <strong>Laptop Plug &amp; Play Connector</strong> — Connect your laptop to the router&apos;s Wi-Fi and run{' '}
+                        <code>npm run connector</code> (or double-click <code>router-connector/Launch-Router-Connector.bat</code>), then type <code>192.168.88.1</code> &amp; password.
+                      </div>
+                      <button
+                        type="button"
+                        className="ux-btn ux-btn-secondary ux-btn-sm"
+                        onClick={() => copyText('npm run connector', 'connector command')}
+                      >
+                        Copy Command
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleCheckConnected}
-                      disabled={checkingRouter}
-                      style={{ width: '100%', background: 'rgba(22, 163, 74, 0.25)', color: '#86efac', border: '1px solid #22c55e', borderRadius: '8px', padding: '8px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      {checkingRouter ? 'Checking Router Connection...' : '✓ Verify Router Is Online Now'}
-                    </button>
-                  </div>
-                )}
-              </form>
+                  )}
+                </form>
+              )}
 
-              {/* Option 2: Laptop Plug & Play Connector (Zero WinBox — IP + Password Only) */}
-              <div
-                style={{
-                  background: 'rgba(15, 23, 42, 0.55)',
-                  border: '1px solid rgba(148, 163, 184, 0.25)',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#93c5fd', textTransform: 'uppercase', marginBottom: '4px' }}>
-                    Zero WinBox • IP &amp; Password Only
-                  </div>
-                  <h4 style={{ margin: '0 0 8px', fontSize: '15px', color: '#fff' }}>
-                    Laptop Plug &amp; Play Connector
-                  </h4>
-                  <p style={{ margin: '0 0 10px', fontSize: '12.5px', color: '#cbd5e1', lineHeight: 1.5 }}>
-                    Don&apos;t want to open WinBox or paste any command? Connect your laptop to the router&apos;s Wi-Fi and launch the local connector — just type <code>192.168.88.1</code>, username, and password.
-                  </p>
-                  <div
-                    style={{
-                      background: '#070d1a',
-                      borderRadius: '8px',
-                      padding: '10px 12px',
-                      fontFamily: 'Consolas, monospace',
-                      fontSize: '12px',
-                      color: '#7dd3fc',
-                      marginBottom: '12px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '8px',
-                    }}
-                  >
-                    <span>npm run connector</span>
-                    <button
-                      type="button"
-                      onClick={() => copyText('npm run connector', 'connector command')}
-                      style={{ background: '#0369a1', color: '#fff', border: 'none', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <p style={{ margin: '0 0 12px', fontSize: '11.5px', color: '#94a3b8' }}>
-                    Windows shortcut: double-click <code>router-connector/Launch-Router-Connector.bat</code>. Opens in your normal browser at <code>http://127.0.0.1:4782</code>.
-                  </p>
-                </div>
-
-                <div
-                  style={{
-                    background: 'rgba(22, 163, 74, 0.1)',
-                    border: '1px solid rgba(74, 222, 128, 0.25)',
-                    borderRadius: '9px',
-                    padding: '10px 12px',
-                    fontSize: '11.5px',
-                    color: '#bbf7d0',
-                    lineHeight: 1.65,
-                  }}
-                >
-                  <strong style={{ color: '#fff', display: 'block', marginBottom: '2px' }}>Applied Automatically on Every Router:</strong>
-                  ✓ Safe Mode preserves existing Hotspot, DNS &amp; users<br />
-                  ✓ Vouchers start counting only on first login<br />
-                  ✓ Strict wall-clock expiry online OR offline (10s sweep)<br />
-                  ✓ Seamless Wi-Fi off/on reconnect via MAC-cookie (4w2d)<br />
-                  ✓ Unlimited accounts (<code>admin</code>) never touched
-                </div>
+              {/* Subtle 1-Line Guarantee Footer */}
+              <div className="ux-footer-strip">
+                <span>✓ Starts on first login</span>
+                <span>✓ Offline expiry (10s)</span>
+                <span>✓ Auto-reconnects Wi-Fi</span>
+                <span>✓ 60s VPS auto-failover</span>
               </div>
             </div>
           )}
 
-          {/* VIEW 2: MULTI-VPS HUBS MANAGER */}
-          {activeView === 'vps' && (
-            <div>
-              {/* Fleet Capacity & 10,000+ Auto-Scaling Summary Banner */}
-              <div
-                style={{
-                  background: 'rgba(14, 165, 233, 0.12)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  borderRadius: '11px',
-                  padding: '10px 14px',
-                  marginBottom: '12px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                }}
-              >
-                <div style={{ fontSize: '12px', color: '#e0f2fe', lineHeight: 1.5 }}>
-                  <strong>Auto-Scaling Fleet Capacity:</strong>{' '}
-                  <code>{fleetSummary?.total_routers_on_hubs ?? 0}</code> /{' '}
-                  <code>{(fleetSummary?.total_capacity ?? 0).toLocaleString()}</code> routers across{' '}
-                  <strong>{hubs.length}</strong> VPS hub(s). Every new VPS defaults to a <code>/16</code> subnet (65,023 IPs, 10,000 ports, 1,000 routers/KVM 1) — add more hubs anytime to scale past <strong>10,000+ routers</strong> with automatic overflow.
+          {/* ── TAB 2: CLOUD SERVERS (MULTI-VPS HUBS) ── */}
+          {activeTab === 'servers' && (
+            <div style={{ display: 'grid', gap: '14px' }}>
+              {/* Fleet Capacity Card */}
+              <div className="ux-form-card" style={{ padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 800 }}>
+                      Fleet Capacity: {totalUsed.toLocaleString()} / {totalCap.toLocaleString()} routers
+                    </div>
+                    <div className="ux-subtitle">
+                      Each server holds up to 1,000 routers by default. Add more servers anytime to auto-scale past 10,000+.
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="ux-btn ux-btn-primary ux-btn-sm"
+                      onClick={() => {
+                        setServerAddMode((m) => (m === 'auto' ? null : 'auto'));
+                        setVpsBootstrap(null);
+                      }}
+                    >
+                      {serverAddMode === 'auto' ? 'Cancel' : '+ Add Cloud Server'}
+                    </button>
+                  </div>
                 </div>
-                {fleetSummary?.suggested_next_subnet && (
-                  <span style={{ fontSize: '11px', color: '#7dd3fc', fontWeight: 700, background: 'rgba(7,13,26,0.55)', padding: '4px 9px', borderRadius: '999px', border: '1px solid rgba(56,189,248,0.35)' }}>
-                    Next Auto Subnet: {fleetSummary.suggested_next_subnet}
-                  </span>
+                {totalCap > 0 && (
+                  <div className="ux-progress-track">
+                    <div className="ux-progress-fill" style={{ width: `${Math.max(fleetPct, totalUsed > 0 ? 4 : 0)}%` }} />
+                  </div>
                 )}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                <span style={{ fontSize: '12.5px', color: '#cbd5e1' }}>
-                  <strong>Done once per VPS:</strong> After connecting a VPS hub here, every router registers automatically with <strong>zero SSH</strong>.
-                </span>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => { setShowAutoEnrollVps((v) => !v); setShowAddHub(false); }}
-                    style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '9px', padding: '8px 13px', fontWeight: 700, fontSize: '12.5px', cursor: 'pointer' }}
-                  >
-                    {showAutoEnrollVps ? 'Close Auto-Enroll' : '⚡ Auto-Enroll VPS (Recommended)'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowAddHub((v) => !v); setShowAutoEnrollVps(false); }}
-                    style={{ background: 'rgba(2, 132, 199, 0.35)', color: '#e0f2fe', border: '1px solid #38bdf8', borderRadius: '9px', padding: '8px 13px', fontWeight: 700, fontSize: '12.5px', cursor: 'pointer' }}
-                  >
-                    {showAddHub ? 'Cancel' : '+ Manual Entry'}
-                  </button>
-                </div>
-              </div>
+              {/* Add Server — Automatic (Default) */}
+              {serverAddMode === 'auto' && (
+                <div className="ux-form-card">
+                  <form onSubmit={handleAutoEnrollVps} style={{ display: 'grid', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800 }}>Connect a New Ubuntu VPS (Once)</h4>
+                        <p className="ux-subtitle">
+                          Installs WireGuard automatically and registers itself here — no SSH password stored.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="ux-link-btn"
+                        onClick={() => setServerAddMode('manual')}
+                      >
+                        Enter details manually ▸
+                      </button>
+                    </div>
 
-              {showAutoEnrollVps && (
-                <form
-                  onSubmit={handleAutoEnrollVps}
-                  style={{
-                    background: 'rgba(15, 23, 42, 0.72)',
-                    border: '1px solid rgba(56, 189, 248, 0.45)',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    marginBottom: '14px',
-                  }}
-                >
-                  <div style={{ fontSize: '12px', color: '#7dd3fc', fontWeight: 700, marginBottom: '8px' }}>
-                    One-Time VPS Setup — No SSH password stored! Just run the generated script once (or paste Cloud-Init when buying a brand-new VPS). The VPS self-registers its IP, WireGuard key, and secret automatically.
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'end' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>VPS Hub Name</label>
-                      <input
-                        type="text"
-                        value={vpsAutoForm.name}
-                        onChange={(e) => setVpsAutoForm((p) => ({ ...p, name: e.target.value }))}
-                        placeholder="e.g. Hostinger Hub 1"
-                        style={inputStyle}
-                      />
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <div style={{ flex: '1 1 240px' }}>
+                        <label className="ux-label">Server Name</label>
+                        <input
+                          type="text"
+                          className="ux-input"
+                          value={vpsAutoForm.name}
+                          onChange={(e) => setVpsAutoForm((p) => ({ ...p, name: e.target.value }))}
+                          placeholder="e.g. Hostinger Server 1"
+                          required
+                        />
+                      </div>
+                      <button type="submit" className="ux-btn ux-btn-primary" disabled={enrollingVps}>
+                        {enrollingVps ? 'Preparing...' : 'Get Setup Script'}
+                      </button>
                     </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>WireGuard Subnet (Auto /16)</label>
-                      <input
-                        type="text"
-                        value={vpsAutoForm.wg_subnet}
-                        onChange={(e) => setVpsAutoForm((p) => ({ ...p, wg_subnet: e.target.value }))}
-                        placeholder="10.100.0.0/16"
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>Max Routers (Auto-Overflow Cap)</label>
-                      <input
-                        type="number"
-                        min={50}
-                        max={10000}
-                        value={vpsAutoForm.max_routers}
-                        onChange={(e) => setVpsAutoForm((p) => ({ ...p, max_routers: Number(e.target.value) || 1000 }))}
-                        style={inputStyle}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={enrollingVps}
-                      style={{ background: '#0284c7', color: '#fff', border: 'none', borderRadius: '9px', padding: '9px 14px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
-                    >
-                      {enrollingVps ? 'Generating...' : 'Generate One-Time VPS Script'}
-                    </button>
-                  </div>
 
+                    <div>
+                      <button
+                        type="button"
+                        className="ux-link-btn"
+                        onClick={() => setShowServerAdvanced((v) => !v)}
+                      >
+                        {showServerAdvanced ? '▾ Hide advanced network settings' : `▸ Advanced (Auto subnet ${vpsAutoForm.wg_subnet}, max ${vpsAutoForm.max_routers} routers)`}
+                      </button>
+                      {showServerAdvanced && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                          <div>
+                            <label className="ux-label">WireGuard Subnet</label>
+                            <input
+                              type="text"
+                              className="ux-input"
+                              value={vpsAutoForm.wg_subnet}
+                              onChange={(e) => setVpsAutoForm((p) => ({ ...p, wg_subnet: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="ux-label">Max Routers Before Auto-Overflow</label>
+                            <input
+                              type="number"
+                              min={50}
+                              max={10000}
+                              className="ux-input"
+                              value={vpsAutoForm.max_routers}
+                              onChange={(e) => setVpsAutoForm((p) => ({ ...p, max_routers: Number(e.target.value) || 1000 }))}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </form>
+
+                  {/* Clean Toggleable Script Output */}
                   {vpsBootstrap?.bootstrap && (
-                    <div style={{ marginTop: '12px', display: 'grid', gap: '10px' }}>
-                      <div style={{ background: '#070d1a', borderRadius: '8px', padding: '10px', border: '1px solid #0284c7' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                          <span style={{ fontSize: '11px', color: '#7dd3fc', fontWeight: 700 }}>
-                            For a Brand-New VPS Order — Paste into &ldquo;Startup Script / Cloud-Init&rdquo; (Zero SSH Ever!)
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => copyText(vpsBootstrap.bootstrap.cloud_init_yaml, 'Cloud-Init YAML')}
-                            style={{ background: '#0369a1', color: '#fff', border: 'none', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                          >
-                            Copy YAML
-                          </button>
-                        </div>
-                        <pre style={{ margin: 0, fontSize: '11px', color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
-                          {vpsBootstrap.bootstrap.cloud_init_yaml}
-                        </pre>
+                    <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--ux-border)' }}>
+                      <div className="ux-tabs" style={{ marginBottom: '10px' }}>
+                        <button
+                          type="button"
+                          className={`ux-tab ${scriptTab === 'existing' ? 'active' : ''}`}
+                          onClick={() => setScriptTab('existing')}
+                        >
+                          Existing VPS (Paste Once in SSH)
+                        </button>
+                        <button
+                          type="button"
+                          className={`ux-tab ${scriptTab === 'fresh' ? 'active' : ''}`}
+                          onClick={() => setScriptTab('fresh')}
+                        >
+                          Brand-New VPS (Startup Script)
+                        </button>
                       </div>
 
-                      <div style={{ background: '#070d1a', borderRadius: '8px', padding: '10px', border: '1px solid rgba(148,163,184,0.35)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                          <span style={{ fontSize: '11px', color: '#bae6fd', fontWeight: 700 }}>
-                            For Your Existing Ubuntu VPS — Paste Once, Then Never SSH Again (Zero Downtime!)
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => copyText(vpsBootstrap.bootstrap.one_line_command, '1-line VPS installer')}
-                            style={{ background: '#0369a1', color: '#fff', border: 'none', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                          >
-                            Copy Command
-                          </button>
+                      {scriptTab === 'existing' ? (
+                        <div className="ux-code-wrap">
+                          <div className="ux-code-top">
+                            <span>Run once in your VPS terminal (zero downtime for active routers)</span>
+                            <button
+                              type="button"
+                              className="ux-btn ux-btn-primary ux-btn-sm"
+                              onClick={() => copyText(vpsBootstrap.bootstrap.one_line_command, 'VPS command')}
+                            >
+                              Copy Command
+                            </button>
+                          </div>
+                          <pre className="ux-code-body">{vpsBootstrap.bootstrap.one_line_command}</pre>
                         </div>
-                        <code style={{ fontSize: '11px', color: '#e2e8f0', wordBreak: 'break-all', display: 'block' }}>
-                          {vpsBootstrap.bootstrap.one_line_command}
-                        </code>
-                      </div>
+                      ) : (
+                        <div className="ux-code-wrap">
+                          <div className="ux-code-top">
+                            <span>Paste into Cloud-Init / Startup Script when ordering a new VPS</span>
+                            <button
+                              type="button"
+                              className="ux-btn ux-btn-primary ux-btn-sm"
+                              onClick={() => copyText(vpsBootstrap.bootstrap.cloud_init_yaml, 'Cloud-Init YAML')}
+                            >
+                              Copy YAML
+                            </button>
+                          </div>
+                          <pre className="ux-code-body">{vpsBootstrap.bootstrap.cloud_init_yaml}</pre>
+                        </div>
+                      )}
                     </div>
                   )}
-                </form>
+                </div>
               )}
 
-              {showAddHub && (
-                <form
-                  onSubmit={handleSaveHub}
-                  style={{
-                    background: 'rgba(15, 23, 42, 0.7)',
-                    border: '1px solid rgba(56, 189, 248, 0.35)',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    marginBottom: '14px',
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: '10px',
-                  }}
-                >
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>Hub Name</label>
-                    <input type="text" value={hubForm.name} onChange={(e) => setHubForm((p) => ({ ...p, name: e.target.value }))} placeholder="Hostinger Hub 1" style={inputStyle} />
+              {/* Add Server — Manual Entry */}
+              {serverAddMode === 'manual' && (
+                <form onSubmit={handleSaveManualHub} className="ux-form-card" style={{ display: 'grid', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800 }}>Manual Server Entry</h4>
+                    <button type="button" className="ux-link-btn" onClick={() => setServerAddMode('auto')}>
+                      ← Back to Automatic Setup
+                    </button>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>VPS Public IP</label>
-                    <input type="text" value={hubForm.public_ip} onChange={(e) => setHubForm((p) => ({ ...p, public_ip: e.target.value }))} placeholder="2.25.15.1" style={inputStyle} />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
+                    <div>
+                      <label className="ux-label">Server Name</label>
+                      <input type="text" className="ux-input" value={hubForm.name} onChange={(e) => setHubForm((p) => ({ ...p, name: e.target.value }))} placeholder="Hostinger Hub 1" />
+                    </div>
+                    <div>
+                      <label className="ux-label">Public IP</label>
+                      <input type="text" className="ux-input" value={hubForm.public_ip} onChange={(e) => setHubForm((p) => ({ ...p, public_ip: e.target.value }))} placeholder="2.25.15.1" />
+                    </div>
+                    <div>
+                      <label className="ux-label">API Secret</label>
+                      <input type="password" className="ux-input" value={hubForm.api_secret} onChange={(e) => setHubForm((p) => ({ ...p, api_secret: e.target.value }))} placeholder="64-character secret" />
+                    </div>
+                    <div>
+                      <label className="ux-label">Max Routers</label>
+                      <input type="number" min={50} max={10000} className="ux-input" value={hubForm.max_routers} onChange={(e) => setHubForm((p) => ({ ...p, max_routers: Number(e.target.value) || 1000 }))} />
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>Provisioner URL</label>
-                    <input type="text" value={hubForm.provisioner_url} onChange={(e) => setHubForm((p) => ({ ...p, provisioner_url: e.target.value }))} placeholder="https://2.25.15.1:9443" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>API Secret</label>
-                    <input type="password" value={hubForm.api_secret} onChange={(e) => setHubForm((p) => ({ ...p, api_secret: e.target.value }))} placeholder="Paste 64-char secret" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>WireGuard Subnet (/16 = 65k IPs)</label>
-                    <input type="text" value={hubForm.wg_subnet} onChange={(e) => setHubForm((p) => ({ ...p, wg_subnet: e.target.value }))} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>Max Routers Cap</label>
-                    <input type="number" min={50} max={10000} value={hubForm.max_routers} onChange={(e) => setHubForm((p) => ({ ...p, max_routers: Number(e.target.value) || 1000 }))} style={inputStyle} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                    <button type="submit" disabled={savingHub} style={{ width: '100%', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '9px', padding: '9px 14px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}>
-                      {savingHub ? 'Testing & Saving...' : 'Test & Save VPS Hub'}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button type="submit" className="ux-btn ux-btn-primary" disabled={savingHub}>
+                      {savingHub ? 'Testing & Saving...' : 'Test & Save Server'}
+                    </button>
+                    <button type="button" className="ux-btn ux-btn-secondary" onClick={() => setServerAddMode(null)}>
+                      Cancel
                     </button>
                   </div>
                 </form>
               )}
 
-              {loadingHubs ? (
-                <div style={{ fontSize: '13px', color: '#94a3b8' }}>Loading VPS hubs...</div>
+              {/* Server List */}
+              {loadingHubs && hubs.length === 0 ? (
+                <div className="ux-subtitle">Loading servers...</div>
               ) : hubs.length === 0 ? (
-                <div style={{ fontSize: '13px', color: '#cbd5e1', padding: '14px', background: 'rgba(15,23,42,0.45)', borderRadius: '10px' }}>
-                  No VPS hubs connected yet. Click <strong>⚡ Auto-Enroll VPS (Recommended)</strong> above to connect your existing VPS once (or a brand-new VPS with zero SSH).
+                <div className="ux-row-card" style={{ justifyContent: 'center', padding: '22px' }}>
+                  <span className="ux-subtitle">No cloud servers added yet. Click <strong>+ Add Cloud Server</strong> above to connect your first VPS.</span>
                 </div>
               ) : (
                 <div style={{ display: 'grid', gap: '10px' }}>
-                  {hubs.map((hub) => (
-                    <div
-                      key={hub.id}
-                      style={{
-                        background: 'rgba(15, 23, 42, 0.6)',
-                        border: '1px solid rgba(148, 163, 184, 0.25)',
-                        borderRadius: '10px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '10px',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: '14px', color: '#fff' }}>
-                          {hub.name} {hub.is_default && <span style={{ fontSize: '10.5px', color: '#38bdf8' }}>★ Default</span>}
+                  {hubs.map((hub) => {
+                    const used = hub.router_count ?? 0;
+                    const cap = hub.effective_capacity ?? hub.max_routers ?? 1000;
+                    const isOnline = hub.status === 'online';
+                    return (
+                      <div key={hub.id} className="ux-row-card">
+                        <div style={{ minWidth: '200px', flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: '14px' }}>{hub.name}</strong>
+                            <span className={`ux-pill ${isOnline ? 'green' : 'amber'}`}>
+                              <span className="ux-dot" />
+                              {isOnline ? 'Online' : hub.status === 'pending_bootstrap' ? 'Waiting for script' : hub.status}
+                            </span>
+                            {hub.is_default && <span className="ux-pill blue">Default</span>}
+                          </div>
+                          <div className="ux-subtitle" style={{ marginTop: '4px' }}>
+                            {hub.public_ip ? <code>{hub.public_ip}</code> : 'Pending IP'} •{' '}
+                            <strong>{used.toLocaleString()} / {cap.toLocaleString()}</strong> routers
+                          </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px' }}>
-                          IP: <code>{hub.public_ip || 'waiting for VPS callback'}</code> • Subnet: <code>{hub.wg_subnet}</code> • Ports: <code>{hub.port_range_start}-{hub.port_range_end}</code> • Capacity:{' '}
-                          <strong style={{ color: hub.is_full ? '#f87171' : '#7dd3fc' }}>
-                            {hub.router_count ?? 0} / {(hub.effective_capacity ?? hub.max_routers ?? 1000).toLocaleString()} routers
-                          </strong>{' '}
-                          • Status:{' '}
-                          <strong style={{ color: hub.status === 'online' ? '#4ade80' : '#fbbf24' }}>{hub.status}</strong>
+
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="ux-btn ux-btn-success ux-btn-sm"
+                            onClick={() => handleMigrateToHub(hub)}
+                            disabled={migratingHubId === hub.id || !hub.public_ip || !isOnline}
+                            title="Switch all routers onto this server automatically within 60 seconds"
+                          >
+                            {migratingHubId === hub.id ? 'Switching...' : 'Move All Routers Here'}
+                          </button>
+                          <button
+                            type="button"
+                            className="ux-btn ux-btn-secondary ux-btn-sm"
+                            onClick={() => handleTestHub(hub.id)}
+                            disabled={testingHubId === hub.id || !hub.public_ip}
+                          >
+                            {testingHubId === hub.id ? 'Testing...' : 'Check'}
+                          </button>
+                          <button
+                            type="button"
+                            className="ux-btn ux-btn-danger-ghost ux-btn-sm"
+                            onClick={() => handleDeleteHub(hub)}
+                          >
+                            Remove
+                          </button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleMigrateToHub(hub)}
-                          disabled={migratingHubId === hub.id || !hub.public_ip || hub.status !== 'online'}
-                          style={{ background: 'rgba(22, 163, 74, 0.22)', color: '#86efac', border: '1px solid rgba(74, 222, 128, 0.45)', borderRadius: '8px', padding: '6px 11px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', opacity: !hub.public_ip || hub.status !== 'online' ? 0.45 : 1 }}
-                        >
-                          {migratingHubId === hub.id ? 'Switching...' : 'Move All Routers Here'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleTestHub(hub.id)}
-                          disabled={testingHubId === hub.id || !hub.public_ip}
-                          style={{ background: 'rgba(2, 132, 199, 0.35)', color: '#e0f2fe', border: '1px solid #38bdf8', borderRadius: '8px', padding: '6px 11px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', opacity: !hub.public_ip ? 0.5 : 1 }}
-                        >
-                          {testingHubId === hub.id ? 'Testing...' : 'Test & Sync Key'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteHub(hub)}
-                          style={{ background: 'rgba(220, 38, 38, 0.2)', color: '#fecaca', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px', padding: '6px 10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

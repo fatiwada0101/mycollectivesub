@@ -56,16 +56,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/cloud-login') {
-      const { cloudUrl, password } = await readJson(req);
+      const { cloudUrl, username, password } = await readJson(req);
       const cleanCloud = String(cloudUrl || '').trim().replace(/\/+$/, '');
-      if (!cleanCloud || !password) {
-        return sendJson(res, 400, { success: false, error: 'Cloud URL and Super Admin password are required' });
+      const adminUser = String(username || 'admin').trim();
+      if (!cleanCloud || !adminUser || !password) {
+        return sendJson(res, 400, { success: false, error: 'Cloud URL, Super Admin username, and password are required' });
       }
 
       const authRes = await fetch(`${cleanCloud}/api/super-admin/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username: adminUser, password }),
         signal: AbortSignal.timeout(12000),
       });
       const authData = await authRes.json().catch(() => ({}));

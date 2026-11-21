@@ -483,3 +483,85 @@ test('/16 CIDR scaling (1,000+ per VPS), reserved port 9443 guard, and 10,000+ m
     await db.close();
   }
 });
+
+test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$wgK escaping, reserved port 9443 block, auth username, and billing-pause cron safety', async () => {
+  // 1. Binary API transmits '=.id=*1' (with leading '=') and '.tag=t1' (without leading '=')
+  let capturedWords = null;
+  const mockServer = net.createServer((socket) => {
+    let buf = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      const { sentences, remaining } = parseSentences(buf);
+      buf = remaining;
+      for (const words of sentences) {
+        if (words[0] === '/ip/hotspot/user/profile/set') capturedWords = words;
+        socket.write(encodeSentence(['!done']));
+      }
+    });
+  });
+  await new Promise((r) => mockServer.listen(0, '127.0.0.1', r));
+  try {
+    const client = new RouterOsBinaryClient({ host: '127.0.0.1', port: mockServer.address().port, timeoutMs: 3000 });
+    await client.connect();
+    await client.command('/ip/hotspot/user/profile/set', { '.id': '*1', '.tag': 't1', 'add-mac-cookie': 'yes' });
+    client.close();
+    assert.ok(capturedWords.includes('=.id=*1'), 'RouterOS Binary API must encode .id as =.id=*1');
+    assert.ok(!capturedWords.includes('.id=*1'), 'RouterOS Binary API must NOT emit bare .id=*1');
+    assert.ok(capturedWords.includes('.tag=t1'), 'RouterOS Binary API must emit .tag without leading =');
+  } finally {
+    await new Promise((r) => mockServer.close(r));
+  }
+
+  // 2. Watchdog source="..." escapes \$wgK so RouterOS does not interpolate it to empty on .rsc import
+  const wdScript = generateZeroTouchRouterScript({
+    routerName: 'Failover-Test',
+    vpsPublicIp: '2.25.15.1',
+    vpsWgPublicKey: VALID_WG_KEY_1,
+    vpsWgSubnet: '10.100.0.0/16',
+    tunnelIp: '10.100.0.8',
+    vpsSyncUrl: 'https://www.mycollectivesub.si/api/onboarding/vps-sync',
+    pollingSecret: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6',
+  });
+  assert.ok(wdScript.includes('\\. \\$wgK') || wdScript.includes('. \\$wgK'), 'watchdog source must escape \\$wgK inside outer double quotes');
+  assert.ok(!wdScript.includes('. $wgK .'), 'watchdog source must NOT leave unescaped $wgK inside outer double quotes');
+
+  // 3. Provisioner rejects reserved port 9443 & 51820 as defense-in-depth
+  const secret = 'bugbot-test-secret-123456';
+  const provServer = createProvisionerServer({ apiSecret: secret, dryRun: true, wgPort: 51820, provisionerPort: 9443 });
+  await new Promise((r) => provServer.listen(0, '127.0.0.1', r));
+  try {
+    const base = `http://127.0.0.1:${provServer.address().port}`;
+    for (const badPort of [9443, 51820]) {
+      const res = await fetch(`${base}/api/peers/register`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey: VALID_WG_KEY_2, tunnelIp: '10.100.0.9', externalPort: badPort }),
+      });
+      assert.equal(res.status, 400, `Provisioner must reject reserved port ${badPort}`);
+    }
+  } finally {
+    await new Promise((r) => provServer.close(r));
+  }
+
+  // 4. Static security & integrity invariants across connectors, routes, and expiry cron
+  const [connServer, connHtml, deskMain, mikrotikSrc, vpsSyncSrc, migrateSrc, onboardSrc, bootstrapSrc, vpsInstSrc] = await Promise.all([
+    read('router-connector/server.mjs'),
+    read('router-connector/index.html'),
+    read('desktop/main.mjs'),
+    read('lib/mikrotik.js'),
+    read('app/api/onboarding/vps-sync/route.js'),
+    read('app/api/super-admin/vps-hubs/migrate/route.js'),
+    read('app/api/super-admin/routers/onboard/route.js'),
+    read('app/api/onboarding/bootstrap/route.js'),
+    read('app/api/onboarding/vps-installer/route.js'),
+  ]);
+  assert.ok(connServer.includes('username: adminUser'), 'local connector must send username to /api/super-admin/auth');
+  assert.ok(deskMain.includes('username: adminUser'), 'desktop app must send username to /api/super-admin/auth');
+  assert.ok(connHtml.includes('id="adminUser"'), 'local connector UI must provide Super Admin username input');
+  assert.ok(mikrotikSrc.includes('expiry_paused_by_billing'), 'cleanupExpiredHotspotUsers must respect billing expiry pause');
+  assert.ok(vpsSyncSrc.includes('\\\\$wgK'), 'vps-sync refreshed watchdog must escape \\$wgK');
+  assert.ok(migrateSrc.includes('UUID_RE.test(targetHubId)'), 'vps migrate must validate targetHubId UUID before .or() filter');
+  assert.ok(onboardSrc.includes('removeRouterPeerFromVps'), 'onboard route must roll back VPS peer on DB insert failure');
+  assert.ok(bootstrapSrc.includes(".eq('bootstrap_token_hash', tokenHash)"), 'bootstrap callback must atomically claim single-use token');
+  assert.ok(vpsInstSrc.includes('EXISTING_ADDR'), 'vps-installer must preserve existing wg0.conf subnet mask on live VPS');
+});

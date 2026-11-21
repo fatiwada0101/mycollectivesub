@@ -7,7 +7,10 @@ import {
   testVpsHubConnection,
   isValidWgPublicKey,
 } from '@/lib/vps-hub.js';
+import { generateBootstrapToken } from '@/lib/zero-touch-onboarding.js';
 import { logger } from '@/lib/logger.js';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * POST /api/super-admin/vps-hubs/migrate
@@ -25,11 +28,14 @@ export async function POST(request) {
     if (!(await validateAdminAuth(request))) return adminUnauthorizedResponse();
 
     const body = await request.json().catch(() => ({}));
-    const targetHubId = body.target_vps_hub_id;
-    const sourceHubId = body.source_vps_hub_id || null;
+    const targetHubId = String(body.target_vps_hub_id || '').trim();
+    const sourceHubId = body.source_vps_hub_id ? String(body.source_vps_hub_id).trim() : null;
 
-    if (!targetHubId) {
-      return NextResponse.json({ success: false, error: 'target_vps_hub_id is required' }, { status: 400 });
+    if (!UUID_RE.test(targetHubId)) {
+      return NextResponse.json({ success: false, error: 'Valid target_vps_hub_id UUID is required' }, { status: 400 });
+    }
+    if (sourceHubId && !UUID_RE.test(sourceHubId)) {
+      return NextResponse.json({ success: false, error: 'Invalid source_vps_hub_id UUID' }, { status: 400 });
     }
 
     let { data: targetHub, error: hubErr } = await supabaseAdmin
@@ -43,13 +49,32 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Target VPS hub not found' }, { status: 404 });
     }
 
-    // Ensure target VPS is online & has a valid WG public key
+    // Ensure target VPS is online & has a valid WG public key persisted in DB for vps-sync failover
     if (!targetHub.wg_public_key || !targetHub.public_ip) {
       const health = await testVpsHubConnection(targetHub);
       if (!health.ok || !health.wgPublicKey) {
         return NextResponse.json({ success: false, error: 'Target VPS hub is not online yet' }, { status: 502 });
       }
-      targetHub = { ...targetHub, wg_public_key: health.wgPublicKey, public_ip: health.publicIp || targetHub.public_ip };
+      const resolvedPublicIp = health.publicIp || targetHub.public_ip;
+      const resolvedSubnet = health.wgSubnet || targetHub.wg_subnet;
+      await supabaseAdmin
+        .from('vps_hubs')
+        .update({
+          wg_public_key: health.wgPublicKey,
+          public_ip: resolvedPublicIp,
+          wg_subnet: resolvedSubnet,
+          status: 'online',
+          last_health_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', targetHub.id);
+      targetHub = {
+        ...targetHub,
+        wg_public_key: health.wgPublicKey,
+        public_ip: resolvedPublicIp,
+        wg_subnet: resolvedSubnet,
+        status: 'online',
+      };
     }
 
     let query = supabaseAdmin.from('routers').select('*').eq('is_active', true);
@@ -86,6 +111,7 @@ export async function POST(request) {
             ip_address: targetHub.public_ip,
             port: Number(slot.external_port),
             wg_tunnel_ip: slot.wg_tunnel_ip,
+            ...(router.polling_secret ? {} : { polling_secret: generateBootstrapToken().slice(0, 48) }),
             updated_at: new Date().toISOString(),
           })
           .eq('id', router.id);

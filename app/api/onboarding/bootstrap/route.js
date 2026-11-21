@@ -114,16 +114,8 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'VPS hub record missing' }, { status: 500 });
     }
 
-    await registerRouterPeerOnVps(hub, {
-      publicKey: wgPublicKey,
-      tunnelIp: router.wg_tunnel_ip,
-      externalPort: router.port,
-      targetPort: 443,
-      routerName: router.name,
-    });
-
-    // Consume single-use token & activate router
-    const { error: updateErr } = await supabaseAdmin
+    // Atomically consume single-use token (optimistic lock prevents concurrent double-registration)
+    const { data: claimedRows, error: claimErr } = await supabaseAdmin
       .from('routers')
       .update({
         wg_public_key: wgPublicKey,
@@ -133,9 +125,37 @@ export async function POST(request) {
         bootstrap_expires_at: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', router.id);
+      .eq('id', router.id)
+      .eq('bootstrap_token_hash', tokenHash)
+      .select('id');
 
-    if (updateErr) throw updateErr;
+    if (claimErr) throw claimErr;
+    if (!claimedRows || claimedRows.length === 0) {
+      return NextResponse.json({ success: false, error: 'Bootstrap token already consumed' }, { status: 409 });
+    }
+
+    try {
+      await registerRouterPeerOnVps(hub, {
+        publicKey: wgPublicKey,
+        tunnelIp: router.wg_tunnel_ip,
+        externalPort: router.port,
+        targetPort: 443,
+        routerName: router.name,
+      });
+    } catch (vpsErr) {
+      // Restore bootstrap token so router can retry cleanly if VPS was momentarily unreachable
+      await supabaseAdmin
+        .from('routers')
+        .update({
+          onboarding_status: 'pending_bootstrap',
+          status: 'offline',
+          bootstrap_token_hash: tokenHash,
+          bootstrap_expires_at: router.bootstrap_expires_at || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', router.id);
+      throw vpsErr;
+    }
 
     logger.info('Bootstrap callback completed — VPS peer registered:', {
       router_id: router.id,

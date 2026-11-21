@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export default function RouterBillingPanel({
   adminHeaders = () => ({}),
@@ -8,6 +8,7 @@ export default function RouterBillingPanel({
   onUpdated = () => {},
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [showMessageSettings, setShowMessageSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingGlobal, setSavingGlobal] = useState(false);
   const [busyRouterId, setBusyRouterId] = useState(null);
@@ -21,10 +22,13 @@ export default function RouterBillingPanel({
   });
   const [routers, setRouters] = useState([]);
 
+  const adminHeadersRef = useRef(adminHeaders);
+  adminHeadersRef.current = adminHeaders;
+
   const loadBilling = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/super-admin/router-billing', { headers: adminHeaders() });
+      const res = await fetch('/api/super-admin/router-billing', { headers: adminHeadersRef.current() });
       const data = await res.json();
       if (data.success) {
         setSettings(data.settings);
@@ -35,7 +39,7 @@ export default function RouterBillingPanel({
     } finally {
       setLoading(false);
     }
-  }, [adminHeaders]);
+  }, []);
 
   useEffect(() => {
     loadBilling();
@@ -54,14 +58,14 @@ export default function RouterBillingPanel({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        showToast(data.error || 'Could not update billing enforcement', 'error');
+        showToast(data.error || 'Could not update billing settings', 'error');
         return;
       }
       setSettings(data.settings);
       showToast(
         data.settings.enabled
-          ? `✓ Monthly fee enforcement ENABLED (${data.paused_count}/${data.total} router(s) paused)`
-          : '✓ Monthly fee enforcement DISABLED — all routers restored to normal auto-expiry',
+          ? `Monthly billing guard enabled (${data.paused_count}/${data.total} router(s) paused)`
+          : 'Monthly billing guard turned OFF — all routers running normal auto-expiry',
         'success'
       );
       await loadBilling();
@@ -83,7 +87,7 @@ export default function RouterBillingPanel({
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        showToast(data.error || 'Router billing update failed', 'error');
+        showToast(data.error || 'Router update failed', 'error');
         return;
       }
       showToast(successLabel, 'success');
@@ -97,325 +101,295 @@ export default function RouterBillingPanel({
   };
 
   return (
-    <div style={{ margin: '12px 0 8px' }}>
-      {/* Prominent Subscribe Banner if ANY router currently has expiry paused / unpaid notice */}
+    <div>
+      {/* Calm Unpaid Reminder Bar (only shown if any router actually has an active notice) */}
       {pausedRouters.length > 0 && (
-        <div
-          style={{
-            marginBottom: '12px',
-            padding: '13px 16px',
-            borderRadius: '12px',
-            background: 'rgba(217, 119, 6, 0.16)',
-            border: '1px solid rgba(251, 191, 36, 0.55)',
-            color: '#fef3c7',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '12px',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ fontSize: '13px', lineHeight: 1.45 }}>
-            <strong style={{ color: '#fde68a' }}>
-              ⚠️ Subscription Notice ({pausedRouters.length} router{pausedRouters.length > 1 ? 's' : ''}):
-            </strong>{' '}
+        <div className="ux-alert-bar">
+          <div>
+            <strong>Subscription Notice ({pausedRouters.length}):</strong>{' '}
             {pausedRouters[0].billing_state?.noticeMessage || settings.notice_message}{' '}
-            <span style={{ opacity: 0.9 }}>
-              ({pausedRouters.map((r) => r.name).join(', ')})
-            </span>
+            <span style={{ opacity: 0.85 }}>({pausedRouters.map((r) => r.name).join(', ')})</span>
           </div>
           <button
             type="button"
+            className="ux-btn ux-btn-amber ux-btn-sm"
             onClick={() => setExpanded(true)}
-            style={{
-              background: '#d97706',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '12px',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
           >
-            Manage Subscriptions
+            Review Routers
           </button>
         </div>
       )}
 
-      {/* Collapsible Control Panel */}
-      <div
-        style={{
-          borderRadius: '16px',
-          background: '#0f1b30',
-          border: settings.enabled
-            ? '1px solid rgba(251, 191, 36, 0.45)'
-            : '1px solid rgba(148, 163, 184, 0.25)',
-          overflow: 'hidden',
-          color: '#f8fafc',
-        }}
-      >
-        <div
-          onClick={() => setExpanded((v) => !v)}
-          style={{
-            padding: '14px 20px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            cursor: 'pointer',
-            gap: '12px',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span
-                style={{
-                  background: settings.enabled ? 'rgba(245, 158, 11, 0.22)' : 'rgba(148, 163, 184, 0.16)',
-                  border: settings.enabled ? '1px solid rgba(251, 191, 36, 0.5)' : '1px solid rgba(148, 163, 184, 0.35)',
-                  color: settings.enabled ? '#fde68a' : '#cbd5e1',
-                  fontSize: '10.5px',
-                  fontWeight: 800,
-                  padding: '2px 9px',
-                  borderRadius: '999px',
-                  textTransform: 'uppercase',
-                }}
-              >
-                {settings.enabled ? 'Enforcement ON' : 'Optional • Currently OFF'}
-              </span>
-              <h3 style={{ margin: 0, fontSize: '15.5px', fontWeight: 800, color: '#fff' }}>
-                Monthly Router Subscription &amp; Expiry-Pause Control
-              </h3>
-            </div>
-            <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#94a3b8' }}>
-              Optional SaaS toggle: when enabled, unpaid routers pause voucher auto-expiry (or show a subscribe notice). Toggle ON/OFF globally or per individual router.
-            </p>
-          </div>
-          <button
-            type="button"
-            style={{
-              background: 'rgba(2, 132, 199, 0.28)',
-              color: '#e0f2fe',
-              border: '1px solid rgba(56, 189, 248, 0.45)',
-              borderRadius: '9px',
-              padding: '8px 13px',
-              fontSize: '12.5px',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
+      <div className="ux-panel">
+        {/* Clean Header Bar */}
+        <div className="ux-panel-header">
+          <div
+            className="ux-panel-title-wrap"
+            style={{ cursor: 'pointer', flex: 1 }}
+            onClick={() => setExpanded((v) => !v)}
           >
-            {expanded ? 'Hide Controls ▲' : 'Configure Billing Toggle ▼'}
-          </button>
+            <div className={`ux-icon-badge ${settings.enabled ? 'amber' : ''}`}>
+              💳
+            </div>
+            <div>
+              <h3 className="ux-title">
+                Monthly Router Billing
+                <span className={`ux-pill ${settings.enabled ? 'amber' : ''}`}>
+                  <span className="ux-dot" />
+                  {settings.enabled ? 'Active' : 'Off'}
+                </span>
+              </h3>
+              <p className="ux-subtitle">
+                Optional: pause voucher expiry or show a renew reminder when a router&apos;s monthly fee is unpaid.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.enabled}
+              aria-label="Toggle monthly router billing enforcement"
+              disabled={savingGlobal}
+              className={`ux-switch amber ${settings.enabled ? 'on' : ''}`}
+              onClick={() => handleSaveGlobal({ ...settings, enabled: !settings.enabled })}
+              title={settings.enabled ? 'Turn OFF globally' : 'Turn ON for all routers'}
+            >
+              <span className="ux-switch-knob" />
+            </button>
+            <button
+              type="button"
+              className="ux-btn ux-btn-secondary ux-btn-sm"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? 'Close ✕' : 'Manage'}
+            </button>
+          </div>
         </div>
 
         {expanded && (
-          <div style={{ padding: '14px 20px 20px', borderTop: '1px solid rgba(148, 163, 184, 0.18)' }}>
-            {/* Master Global Switch Row */}
-            <div
-              style={{
-                background: 'rgba(15, 23, 42, 0.65)',
-                border: '1px solid rgba(148, 163, 184, 0.25)',
-                borderRadius: '12px',
-                padding: '14px',
-                marginBottom: '14px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+          <div className="ux-panel-body" style={{ display: 'grid', gap: '14px' }}>
+            {/* Global Mode Selector Card */}
+            <div className="ux-form-card" style={{ display: 'grid', gap: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: '14px', color: '#fff' }}>
-                    Master Switch (Applies to All Connected Routers)
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                    Off by default. Turn ON to enforce monthly subscription fees across all routers (exempt individual routers below anytime).
-                  </div>
+                  <div style={{ fontSize: '14px', fontWeight: 800 }}>What happens when a router is unpaid?</div>
+                  <div className="ux-subtitle">Applies to all routers following the global switch. You can exempt individual routers below.</div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {(settings.enabled || pausedRouters.length > 0) && (
                   <button
                     type="button"
-                    disabled={savingGlobal}
-                    onClick={() => handleSaveGlobal({ ...settings, enabled: !settings.enabled })}
-                    style={{
-                      background: settings.enabled ? '#d97706' : '#0284c7',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '9px',
-                      padding: '8px 14px',
-                      fontSize: '12.5px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {savingGlobal ? 'Applying...' : settings.enabled ? 'Turn OFF Globally' : 'Turn ON for All Routers'}
-                  </button>
-                  <button
-                    type="button"
+                    className="ux-btn ux-btn-success ux-btn-sm"
                     disabled={savingGlobal}
                     onClick={() => handleSaveGlobal({ action: 'disable_all' })}
-                    style={{
-                      background: 'rgba(22, 163, 74, 0.2)',
-                      color: '#86efac',
-                      border: '1px solid rgba(74, 222, 128, 0.4)',
-                      borderRadius: '9px',
-                      padding: '8px 13px',
-                      fontSize: '12.5px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
                   >
-                    Disable All &amp; Resume Expiry
+                    Turn Off &amp; Resume All
                   </button>
-                </div>
+                )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', alignItems: 'end' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>Action When Unpaid</label>
-                  <select
-                    value={settings.mode}
-                    onChange={(e) => setSettings((p) => ({ ...p, mode: e.target.value }))}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #334155', background: '#0b1324', color: '#fff', fontSize: '12.5px' }}
-                  >
-                    <option value="pause_expiry">Pause Voucher Auto-Expiry + Show Subscribe Banner</option>
-                    <option value="notice_only">Show Subscribe Warning Banner Only (Keep Expiry Running)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>Grace Period (Days)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="30"
-                    value={settings.grace_period_days}
-                    onChange={(e) => setSettings((p) => ({ ...p, grace_period_days: Number(e.target.value) || 0 }))}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #334155', background: '#0b1324', color: '#fff', fontSize: '13px' }}
-                  />
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', marginBottom: '4px' }}>Message Shown When Unpaid</label>
-                  <input
-                    type="text"
-                    value={settings.notice_message}
-                    onChange={(e) => setSettings((p) => ({ ...p, notice_message: e.target.value }))}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #334155', background: '#0b1324', color: '#fff', fontSize: '12.5px' }}
-                  />
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    disabled={savingGlobal}
-                    onClick={() => handleSaveGlobal(settings)}
-                    style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    {savingGlobal ? 'Syncing Routers...' : 'Save Settings & Sync Routers'}
-                  </button>
-                </div>
+              <div className="ux-choice-grid">
+                <button
+                  type="button"
+                  className={`ux-choice-card ${settings.mode === 'pause_expiry' ? 'selected' : ''}`}
+                  onClick={() => handleSaveGlobal({ ...settings, mode: 'pause_expiry' })}
+                  disabled={savingGlobal}
+                >
+                  <span className="ux-choice-title">
+                    Pause Voucher Expiry
+                    {settings.mode === 'pause_expiry' && <span className="ux-pill blue">Selected</span>}
+                  </span>
+                  <span className="ux-choice-desc">
+                    Stops vouchers from expiring on unpaid routers and displays a renew banner until paid.
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`ux-choice-card ${settings.mode === 'notice_only' ? 'selected' : ''}`}
+                  onClick={() => handleSaveGlobal({ ...settings, mode: 'notice_only' })}
+                  disabled={savingGlobal}
+                >
+                  <span className="ux-choice-title">
+                    Show Renew Banner Only
+                    {settings.mode === 'notice_only' && <span className="ux-pill blue">Selected</span>}
+                  </span>
+                  <span className="ux-choice-desc">
+                    Displays a subscription reminder while keeping normal automatic voucher expiry running.
+                  </span>
+                </button>
               </div>
-            </div>
 
-            {/* Individual Router Overrides */}
-            <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#fff', marginBottom: '8px' }}>
-              Individual Router Controls ({routers.length})
-            </div>
+              {/* Progressive Disclosure: Customize Notice & Grace Period */}
+              <div>
+                <button
+                  type="button"
+                  className="ux-link-btn"
+                  onClick={() => setShowMessageSettings((v) => !v)}
+                >
+                  {showMessageSettings
+                    ? '▾ Hide message & grace period'
+                    : `▸ Customize notice message & grace period (${settings.grace_period_days}d grace)`}
+                </button>
 
-            {loading ? (
-              <div style={{ fontSize: '12.5px', color: '#94a3b8' }}>Loading routers...</div>
-            ) : (
-              <div style={{ display: 'grid', gap: '8px' }}>
-                {routers.map((r) => {
-                  const st = r.billing_state || {};
-                  const busy = busyRouterId === r.id;
-                  const dueText = r.subscription_expires_at
-                    ? new Date(r.subscription_expires_at).toLocaleDateString()
-                    : 'No due date set';
-
-                  return (
-                    <div
-                      key={r.id}
-                      style={{
-                        background: st.showSubscribeNotice ? 'rgba(217, 119, 6, 0.12)' : 'rgba(15, 23, 42, 0.55)',
-                        border: st.showSubscribeNotice ? '1px solid rgba(251, 191, 36, 0.45)' : '1px solid rgba(148, 163, 184, 0.2)',
-                        borderRadius: '10px',
-                        padding: '11px 14px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '10px',
-                      }}
-                    >
+                {showMessageSettings && (
+                  <div style={{ display: 'grid', gap: '10px', marginTop: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 160px) 1fr', gap: '10px' }}>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span>{r.name}</span>
-                          <span
-                            style={{
-                              fontSize: '10.5px',
-                              padding: '2px 7px',
-                              borderRadius: '999px',
-                              background: st.shouldPauseExpiry
-                                ? 'rgba(239, 68, 68, 0.22)'
-                                : st.effectiveStatus === 'exempt'
-                                  ? 'rgba(56, 189, 248, 0.2)'
-                                  : 'rgba(22, 163, 74, 0.2)',
-                              color: st.shouldPauseExpiry
-                                ? '#fca5a5'
-                                : st.effectiveStatus === 'exempt'
-                                  ? '#7dd3fc'
-                                  : '#86efac',
-                            }}
-                          >
-                            {st.shouldPauseExpiry
-                              ? 'Expiry Paused (Unpaid)'
-                              : st.showSubscribeNotice
-                                ? 'Subscribe Notice Active'
-                                : st.effectiveStatus === 'exempt'
-                                  ? 'Exempt (Always Normal)'
-                                  : 'Normal Auto-Expiry'}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '3px' }}>
-                          Plan Status: <code>{r.subscription_status || 'active'}</code> • Due: <code>{dueText}</code> • Override: <code>{r.billing_enforcement_override || 'inherit'}</code>
-                        </div>
+                        <label className="ux-label">Grace Days</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="30"
+                          className="ux-input"
+                          value={settings.grace_period_days}
+                          onChange={(e) => setSettings((p) => ({ ...p, grace_period_days: Number(e.target.value) || 0 }))}
+                        />
                       </div>
-
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                        <select
-                          disabled={busy}
-                          value={r.billing_enforcement_override || 'inherit'}
-                          onChange={(e) =>
-                            handleRouterAction(
-                              r.id,
-                              { billing_enforcement_override: e.target.value },
-                              `Updated enforcement override for "${r.name}"`
-                            )
-                          }
-                          style={{ padding: '6px 8px', borderRadius: '7px', border: '1px solid #334155', background: '#0b1324', color: '#fff', fontSize: '11.5px' }}
-                        >
-                          <option value="inherit">Follow Global Switch</option>
-                          <option value="force_off">Toggle OFF (Exempt)</option>
-                          <option value="force_on">Toggle ON (Enforce)</option>
-                        </select>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => handleRouterAction(r.id, { action: 'mark_paid_30d' }, `✓ Marked "${r.name}" Paid (+30d) & resumed auto-expiry`)}
-                          style={{ background: 'rgba(22, 163, 74, 0.22)', color: '#86efac', border: '1px solid rgba(74, 222, 128, 0.45)', borderRadius: '7px', padding: '6px 10px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          Mark Paid (+30d)
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => handleRouterAction(r.id, { action: 'mark_unpaid' }, `Marked "${r.name}" Past Due`)}
-                          style={{ background: 'rgba(217, 119, 6, 0.22)', color: '#fde68a', border: '1px solid rgba(251, 191, 36, 0.45)', borderRadius: '7px', padding: '6px 10px', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          Mark Unpaid
-                        </button>
+                      <div>
+                        <label className="ux-label">Renew Notice Message</label>
+                        <input
+                          type="text"
+                          className="ux-input"
+                          value={settings.notice_message}
+                          onChange={(e) => setSettings((p) => ({ ...p, notice_message: e.target.value }))}
+                        />
                       </div>
                     </div>
-                  );
-                })}
+                    <div>
+                      <button
+                        type="button"
+                        className="ux-btn ux-btn-primary ux-btn-sm"
+                        disabled={savingGlobal}
+                        onClick={() => handleSaveGlobal(settings)}
+                      >
+                        {savingGlobal ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* Per-Router Simple Controls */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 800 }}>Routers ({routers.length})</span>
+                <span className="ux-subtitle">Switch: Auto = follows global • Off = exempt • On = always enforce</span>
+              </div>
+
+              {loading && routers.length === 0 ? (
+                <div className="ux-subtitle">Loading routers...</div>
+              ) : routers.length === 0 ? (
+                <div className="ux-row-card" style={{ justifyContent: 'center' }}>
+                  <span className="ux-subtitle">No routers registered yet.</span>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {routers.map((r) => {
+                    const st = r.billing_state || {};
+                    const busy = busyRouterId === r.id;
+                    const override = r.billing_enforcement_override || 'inherit';
+                    const isUnpaid = r.subscription_status === 'past_due' || r.subscription_status === 'suspended' || st.isOverdue;
+                    const dueText = r.subscription_expires_at
+                      ? `Due ${new Date(r.subscription_expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+                      : 'No due date';
+
+                    return (
+                      <div key={r.id} className={`ux-row-card ${st.showSubscribeNotice ? 'highlight-amber' : ''}`}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: '13.5px' }}>{r.name}</strong>
+                            <span
+                              className={`ux-pill ${
+                                st.shouldPauseExpiry
+                                  ? 'red'
+                                  : st.showSubscribeNotice
+                                    ? 'amber'
+                                    : st.effectiveStatus === 'exempt'
+                                      ? 'blue'
+                                      : 'green'
+                              }`}
+                            >
+                              {st.shouldPauseExpiry
+                                ? 'Expiry Paused'
+                                : st.showSubscribeNotice
+                                  ? 'Renew Notice'
+                                  : st.effectiveStatus === 'exempt'
+                                    ? 'Exempt'
+                                    : 'Normal'}
+                            </span>
+                          </div>
+                          <div className="ux-subtitle" style={{ marginTop: '3px' }}>
+                            {isUnpaid ? 'Unpaid' : 'Paid'} • {dueText}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          {/* Clean 3-way Segmented Override (Auto | Off | On) */}
+                          <div className="ux-seg" role="group" aria-label={`Enforcement override for ${r.name}`}>
+                            {[
+                              { val: 'inherit', label: 'Auto', cls: '' },
+                              { val: 'force_off', label: 'Off', cls: 'off' },
+                              { val: 'force_on', label: 'On', cls: 'on' },
+                            ].map((opt) => (
+                              <button
+                                key={opt.val}
+                                type="button"
+                                disabled={busy}
+                                className={`ux-seg-btn ${override === opt.val ? `active ${opt.cls}` : ''}`}
+                                onClick={() =>
+                                  handleRouterAction(
+                                    r.id,
+                                    { billing_enforcement_override: opt.val },
+                                    `${r.name}: set to ${opt.label}`
+                                  )
+                                }
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {isUnpaid ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              className="ux-btn ux-btn-success ux-btn-sm"
+                              onClick={() =>
+                                handleRouterAction(
+                                  r.id,
+                                  { action: 'mark_paid_30d' },
+                                  `"${r.name}" marked Paid (+30d) — auto-expiry active`
+                                )
+                              }
+                            >
+                              Mark Paid (+30d)
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              className="ux-btn ux-btn-secondary ux-btn-sm"
+                              onClick={() =>
+                                handleRouterAction(
+                                  r.id,
+                                  { action: 'mark_unpaid' },
+                                  `"${r.name}" marked Unpaid`
+                                )
+                              }
+                            >
+                              Mark Unpaid
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

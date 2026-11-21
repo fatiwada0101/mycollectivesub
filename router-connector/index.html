@@ -3,205 +3,284 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MyCollectiveSub — Plug &amp; Play Router Connector</title>
+<title>MyCollectiveSub — Router Plug &amp; Play</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-    background: #0b162a;
-    color: #e2e8f0;
+    font-family: 'Plus Jakarta Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    background: #F4F9FF;
+    color: #0A2558;
     min-height: 100vh;
-    padding: 28px 16px;
+    padding: 32px 16px;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  .hero {
-    background: linear-gradient(135deg, #0b1f3a 0%, #103b73 55%, #0284c7 100%);
-    border-radius: 16px;
-    padding: 22px 24px;
-    margin-bottom: 20px;
-    box-shadow: 0 12px 32px rgba(2, 132, 199, 0.25);
-  }
-  .badge {
-    display: inline-block;
-    background: rgba(255,255,255,0.16);
-    color: #e0f2fe;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 4px 10px;
-    border-radius: 999px;
+  .wrap { max-width: 620px; margin: 0 auto; }
+  .header { text-align: center; margin-bottom: 22px; }
+  .brand-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(0, 136, 255, 0.1); color: #035EC8;
+    font-size: 11.5px; font-weight: 800; padding: 5px 12px; border-radius: 999px;
     margin-bottom: 10px;
   }
-  .hero h1 { font-size: 22px; margin-bottom: 6px; color: #fff; }
-  .hero p { font-size: 13.5px; color: #dbeafe; line-height: 1.5; }
-  .defaults {
-    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+  .header h1 { font-size: 24px; font-weight: 800; color: #062B66; letter-spacing: -0.02em; }
+  .header p { font-size: 13.5px; color: #52678A; margin-top: 6px; line-height: 1.5; }
+
+  .stepper {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-bottom: 20px; font-size: 12px; font-weight: 700; color: #64748B;
   }
-  .chip {
-    background: rgba(15, 23, 42, 0.45);
-    border: 1px solid rgba(186, 230, 253, 0.35);
-    color: #bae6fd;
-    font-size: 11.5px;
-    padding: 4px 10px;
-    border-radius: 999px;
+  .step-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px; background: #FFFFFF;
+    border: 1px solid #D7E6FA;
   }
+  .step-pill.active { background: #062B66; color: #FFFFFF; border-color: #062B66; }
+  .step-pill.done { background: rgba(16, 185, 129, 0.12); color: #047857; border-color: rgba(16, 185, 129, 0.35); }
+
   .card {
-    background: #111c33;
-    border: 1px solid #1e3259;
-    border-radius: 14px;
-    padding: 20px 22px;
-    margin-bottom: 16px;
+    background: #FFFFFF;
+    border: 1px solid #D7E6FA;
+    border-radius: 20px;
+    padding: 22px;
+    margin-bottom: 14px;
+    box-shadow: 0 8px 28px rgba(6, 43, 102, 0.06);
   }
-  .card h2 { font-size: 15.5px; color: #f8fafc; margin-bottom: 12px; }
+  .card h2 { font-size: 16px; font-weight: 800; color: #062B66; margin-bottom: 4px; }
+  .sub { font-size: 12.5px; color: #52678A; margin-bottom: 16px; line-height: 1.45; }
+
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
-  label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 5px; font-weight: 600; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+
+  label { display: block; font-size: 12px; font-weight: 700; color: #0A2558; margin-bottom: 5px; }
   input, select {
-    width: 100%;
-    padding: 10px 12px;
-    border-radius: 9px;
-    border: 1px solid #2b426d;
-    background: #0b1324;
-    color: #f8fafc;
-    font-size: 13.5px;
-    outline: none;
+    width: 100%; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid #B9D4F8; background: #F7FAFF; color: #0A2558;
+    font-size: 13.5px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
   }
-  input:focus, select:focus { border-color: #38bdf8; }
+  input:focus, select:focus { border-color: #0088FF; box-shadow: 0 0 0 3px rgba(0, 136, 255, 0.12); background: #FFFFFF; }
+
+  .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+  @media (max-width: 560px) { .choice-grid { grid-template-columns: 1fr; } }
+  .choice-card {
+    text-align: left; background: #F7FAFF; border: 1.5px solid #D7E6FA; border-radius: 12px;
+    padding: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .choice-card:hover { border-color: #0088FF; }
+  .choice-card.selected { border-color: #0088FF; background: rgba(0, 136, 255, 0.08); box-shadow: 0 0 0 1px #0088FF; }
+  .choice-title { display: block; font-size: 13px; font-weight: 800; color: #062B66; margin-bottom: 3px; }
+  .choice-desc { display: block; font-size: 11.5px; color: #52678A; line-height: 1.4; }
+
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    background: linear-gradient(135deg, #0284c7, #0ea5e9);
-    color: #fff; font-weight: 700; font-size: 14px;
-    padding: 11px 18px; border-radius: 10px; border: none; cursor: pointer;
-    width: 100%; margin-top: 14px;
+    background: linear-gradient(135deg, #062B66 0%, #0088FF 100%);
+    color: #FFFFFF; font-weight: 700; font-size: 14px;
+    padding: 11px 18px; border-radius: 11px; border: none; cursor: pointer;
+    width: 100%; margin-top: 16px; box-shadow: 0 6px 16px rgba(0, 136, 255, 0.22);
+    transition: transform 0.15s;
   }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); }
   .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-  .status-box {
-    margin-top: 14px; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5;
-    display: none;
+
+  .link-btn {
+    background: none; border: none; color: #035EC8; font-size: 12px; font-weight: 700;
+    cursor: pointer; margin-top: 12px; padding: 0;
   }
-  .status-ok { background: rgba(22, 163, 74, 0.15); border: 1px solid #22c55e; color: #bbf7d0; display: block; }
-  .status-err { background: rgba(220, 38, 38, 0.15); border: 1px solid #ef4444; color: #fecaca; display: block; }
+  .link-btn:hover { text-decoration: underline; }
+
+  .signed-bar {
+    display: none; align-items: center; justify-content: space-between; gap: 10px;
+    background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #065F46; border-radius: 14px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; font-weight: 700;
+  }
+  .status-box { margin-top: 14px; padding: 12px 14px; border-radius: 11px; font-size: 13px; line-height: 1.5; display: none; }
+  .status-ok { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); color: #065F46; display: block; }
+  .status-err { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.35); color: #991B1B; display: block; }
+
   .log {
-    margin-top: 12px; background: #070d1a; border: 1px solid #1e293b; border-radius: 10px;
-    padding: 12px; font-family: Consolas, monospace; font-size: 12px; max-height: 280px; overflow-y: auto;
+    margin-top: 12px; background: #0B1220; border-radius: 12px; padding: 12px;
+    font-family: Consolas, monospace; font-size: 11.5px; color: #E2E8F0; max-height: 220px; overflow-y: auto;
   }
-  .log-row { margin-bottom: 6px; }
-  .muted { color: #94a3b8; font-size: 12.5px; margin-bottom: 10px; }
+  .log-row { margin-bottom: 5px; }
+  .guarantee {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px;
+    font-size: 11.5px; color: #52678A; margin-top: 14px;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="hero">
-    <div class="badge">Local Zero-Touch Onboarding • Zero SSH • Zero WinBox</div>
-    <h1>MyCollectiveSub Plug &amp; Play Router Connector</h1>
-    <p>Connect your laptop to the MikroTik router's Wi-Fi/LAN, enter the router IP &amp; password below, and this tool automatically registers the router on your VPS Hub and applies all hotspot, expiry, and auto-reconnect settings.</p>
-    <div class="defaults">
-      <span class="chip">✓ Strict First-Login Wall-Clock Expiry v3 (Online &amp; Offline)</span>
-      <span class="chip">✓ 10s Sweep Scheduler</span>
-      <span class="chip">✓ MAC-Cookie Auto-Reconnect (4w2d)</span>
-      <span class="chip">✓ Zero-SSH Multi-VPS WireGuard</span>
-    </div>
+  <div class="header">
+    <div class="brand-pill">⚡ Plug &amp; Play • Zero WinBox • Zero SSH</div>
+    <h1>Connect a MikroTik Router</h1>
+    <p>Join your router&apos;s Wi-Fi, sign in once, and enter the router password below.</p>
+  </div>
+
+  <div class="stepper">
+    <span id="pill1" class="step-pill active">1. Sign In</span>
+    <span>→</span>
+    <span id="pill2" class="step-pill">2. Router Details</span>
+    <span>→</span>
+    <span id="pill3" class="step-pill">3. Connected</span>
+  </div>
+
+  <!-- Collapsed Signed-In Strip -->
+  <div id="signedBar" class="signed-bar">
+    <span id="signedText">✓ Connected to MyCollectiveSub Cloud</span>
+    <button type="button" class="link-btn" style="margin:0" onclick="resetLogin()">Change</button>
   </div>
 
   <!-- Step 1: Cloud Sign-In -->
-  <div class="card">
-    <h2>Step 1 — Connect to Your MyCollectiveSub Cloud Dashboard</h2>
-    <p class="muted">Loads your registered VPS Hubs and Locations automatically.</p>
-    <div class="grid">
+  <div class="card" id="loginCard">
+    <h2>Sign in to Your Cloud Dashboard</h2>
+    <p class="sub">Loads your cloud servers and locations automatically.</p>
+    <div style="display:grid; gap:12px;">
       <div>
-        <label>Cloud App URL</label>
-        <input id="cloudUrl" type="url" value="https://www.mycollectivesub.si" placeholder="https://www.mycollectivesub.si" />
+        <label>Dashboard URL</label>
+        <input id="cloudUrl" type="url" value="https://www.mycollectivesub.si" />
       </div>
-      <div>
-        <label>Super Admin Password</label>
-        <input id="adminPass" type="password" placeholder="Enter Super Admin password" />
+      <div class="grid">
+        <div>
+          <label>Super Admin Username</label>
+          <input id="adminUser" type="text" value="admin" placeholder="admin" />
+        </div>
+        <div>
+          <label>Super Admin Password</label>
+          <input id="adminPass" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter') cloudLogin()" />
+        </div>
       </div>
     </div>
-    <button id="loginBtn" class="btn" onclick="cloudLogin()">Connect Cloud &amp; Load VPS Hubs</button>
+    <button id="loginBtn" class="btn" onclick="cloudLogin()">Continue →</button>
     <div id="loginStatus" class="status-box"></div>
   </div>
 
   <!-- Step 2: Local MikroTik Onboarding -->
-  <div class="card" id="onboardCard" style="opacity:0.55; pointer-events:none;">
-    <h2>Step 2 — Enter Local MikroTik Router Details (While on Router Wi-Fi)</h2>
-    <p class="muted">Works even on brand-new factory MikroTik routers over port 8728 (Binary API) or REST 443/80.</p>
-    <div class="grid">
+  <div class="card" id="onboardCard" style="display:none;">
+    <h2>Enter Router Details</h2>
+    <p class="sub">Make sure your laptop is connected to this router&apos;s Wi-Fi or LAN cable.</p>
+
+    <div style="display:grid; gap:12px;">
       <div>
-        <label>Router Name (Display &amp; Identity)</label>
+        <label>Router Name</label>
         <input id="routerName" type="text" placeholder="e.g. Kano Branch 2" />
       </div>
+
       <div>
-        <label>Local Router IP</label>
-        <input id="localIp" type="text" value="192.168.88.1" placeholder="192.168.88.1" />
+        <label>Is this router already configured?</label>
+        <div class="choice-grid">
+          <button type="button" id="modeExisting" class="choice-card selected" onclick="selectMode('existing')">
+            <span class="choice-title">Already Configured ✓</span>
+            <span class="choice-desc">Keeps Hotspot, DNS &amp; users untouched. Just links to cloud.</span>
+          </button>
+          <button type="button" id="modeFresh" class="choice-card" onclick="selectMode('fresh')">
+            <span class="choice-title">Brand-New Router</span>
+            <span class="choice-desc">Applies full Hotspot, login page &amp; cloud profile.</span>
+          </button>
+        </div>
       </div>
+
+      <div class="grid">
+        <div>
+          <label>Router IP</label>
+          <input id="localIp" type="text" value="192.168.88.1" />
+        </div>
+        <div>
+          <label>Router Password</label>
+          <input id="localPass" type="password" placeholder="Leave blank if none" />
+        </div>
+      </div>
+
       <div>
-        <label>Router Admin Username</label>
-        <input id="localUser" type="text" value="admin" />
-      </div>
-      <div>
-        <label>Router Admin Password</label>
-        <input id="localPass" type="password" placeholder="Leave blank if factory default" />
-      </div>
-      <div>
-        <label>Target VPS Hub (Zero-SSH Auto-Register)</label>
-        <select id="vpsHubId"></select>
-      </div>
-      <div>
-        <label>Location / Site (Optional)</label>
-        <select id="locationId"><option value="">— Unassigned —</option></select>
-      </div>
-      <div style="grid-column: 1 / -1;">
-        <label>Router Setup Mode</label>
-        <select id="routerMode">
-          <option value="existing">Already Configured Router — Connect to Cloud &amp; Generate Vouchers (Preserves existing Hotspot, users &amp; DNS)</option>
-          <option value="fresh">Brand-New Router — Full Hotspot, Walled Garden &amp; Branded Login Page Auto-Setup</option>
-        </select>
+        <button type="button" class="link-btn" style="margin-top:0" onclick="toggleAdvanced()" id="advToggle">
+          ▸ Optional settings (Username, Cloud Server, Location)
+        </button>
+        <div id="advBox" style="display:none; margin-top:10px;" class="grid">
+          <div>
+            <label>Router Username</label>
+            <input id="localUser" type="text" value="admin" />
+          </div>
+          <div>
+            <label>Location</label>
+            <select id="locationId"><option value="">Unassigned</option></select>
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label>Cloud Server</label>
+            <select id="vpsHubId"><option value="">Auto-Select (Recommended — Auto-scales)</option></select>
+          </div>
+        </div>
       </div>
     </div>
-    <button id="onboardBtn" class="btn" onclick="startOnboarding()">Auto-Configure &amp; Connect Router</button>
+
+    <button id="onboardBtn" class="btn" onclick="startOnboarding()">Connect Router Automatically</button>
     <div id="onboardStatus" class="status-box"></div>
     <div id="stepLog" class="log" style="display:none;"></div>
+  </div>
+
+  <div class="guarantee">
+    <span>✓ First-login timer</span>
+    <span>✓ Offline expiry (10s)</span>
+    <span>✓ Wi-Fi auto-reconnect</span>
+    <span>✓ Auto VPS failover</span>
   </div>
 </div>
 
 <script>
   let adminToken = '';
+  let routerMode = 'existing';
+
+  function selectMode(mode) {
+    routerMode = mode;
+    document.getElementById('modeExisting').classList.toggle('selected', mode === 'existing');
+    document.getElementById('modeFresh').classList.toggle('selected', mode === 'fresh');
+  }
+
+  function toggleAdvanced() {
+    const box = document.getElementById('advBox');
+    const open = box.style.display === 'none';
+    box.style.display = open ? 'grid' : 'none';
+    document.getElementById('advToggle').textContent = open
+      ? '▾ Hide optional settings'
+      : '▸ Optional settings (Username, Cloud Server, Location)';
+  }
+
+  function resetLogin() {
+    document.getElementById('loginCard').style.display = 'block';
+    document.getElementById('signedBar').style.display = 'none';
+    document.getElementById('onboardCard').style.display = 'none';
+    document.getElementById('pill1').className = 'step-pill active';
+    document.getElementById('pill2').className = 'step-pill';
+    document.getElementById('pill3').className = 'step-pill';
+  }
 
   async function cloudLogin() {
     const btn = document.getElementById('loginBtn');
     const box = document.getElementById('loginStatus');
     const cloudUrl = document.getElementById('cloudUrl').value.trim();
+    const username = document.getElementById('adminUser').value.trim() || 'admin';
     const password = document.getElementById('adminPass').value;
     btn.disabled = true;
-    btn.textContent = 'Connecting...';
+    btn.textContent = 'Signing in...';
     box.className = 'status-box';
 
     try {
       const res = await fetch('/api/cloud-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cloudUrl, password }),
+        body: JSON.stringify({ cloudUrl, username, password }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Login failed');
 
       adminToken = data.token;
       const hubSel = document.getElementById('vpsHubId');
-      hubSel.innerHTML = '';
-      if (!data.hubs || data.hubs.length === 0) {
-        hubSel.innerHTML = '<option value="">No VPS Hubs registered yet — add one in Super Admin</option>';
-      } else {
-        for (const h of data.hubs) {
-          const opt = document.createElement('option');
-          opt.value = h.id;
-          opt.textContent = `${h.name} (${h.public_ip}) [${h.status || 'unknown'}]${h.is_default ? ' ★ Default' : ''}`;
-          hubSel.appendChild(opt);
-        }
+      hubSel.innerHTML = '<option value="">Auto-Select (Recommended — Auto-scales)</option>';
+      for (const h of (data.hubs || [])) {
+        const opt = document.createElement('option');
+        opt.value = h.id;
+        opt.textContent = `${h.name} (${h.public_ip || 'pending'})${h.is_default ? ' ★' : ''}`;
+        hubSel.appendChild(opt);
       }
 
       const locSel = document.getElementById('locationId');
-      locSel.innerHTML = '<option value="">— Unassigned —</option>';
+      locSel.innerHTML = '<option value="">Unassigned</option>';
       for (const l of (data.locations || [])) {
         const opt = document.createElement('option');
         opt.value = l.id;
@@ -209,16 +288,19 @@
         locSel.appendChild(opt);
       }
 
-      document.getElementById('onboardCard').style.opacity = '1';
-      document.getElementById('onboardCard').style.pointerEvents = 'auto';
-      box.className = 'status-box status-ok';
-      box.textContent = `✓ Connected! Loaded ${data.hubs.length} VPS Hub(s) and ${data.locations.length} Location(s).`;
+      document.getElementById('signedText').textContent = `✓ Signed in (${(data.hubs || []).length} cloud server(s) ready)`;
+      document.getElementById('loginCard').style.display = 'none';
+      document.getElementById('signedBar').style.display = 'flex';
+      document.getElementById('onboardCard').style.display = 'block';
+      document.getElementById('pill1').className = 'step-pill done';
+      document.getElementById('pill2').className = 'step-pill active';
+      document.getElementById('routerName').focus();
     } catch (err) {
       box.className = 'status-box status-err';
-      box.textContent = `✗ ${err.message}`;
+      box.textContent = `Could not sign in: ${err.message}`;
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Connect Cloud & Load VPS Hubs';
+      btn.textContent = 'Continue →';
     }
   }
 
@@ -232,20 +314,19 @@
     const localPassword = document.getElementById('localPass').value;
     const vpsHubId = document.getElementById('vpsHubId').value;
     const locationId = document.getElementById('locationId').value;
-    const alreadyConfigured = document.getElementById('routerMode').value !== 'fresh';
     const cloudUrl = document.getElementById('cloudUrl').value.trim();
 
     if (!routerName || !localIp) {
       box.className = 'status-box status-err';
-      box.textContent = '✗ Please enter both Router Name and Local Router IP.';
+      box.textContent = 'Please enter both Router Name and Router IP.';
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = 'Configuring Router & VPS Hub (10–20s)...';
+    btn.textContent = 'Connecting router (10–20s)...';
     box.className = 'status-box';
     log.style.display = 'block';
-    log.innerHTML = '<div class="log-row">⏳ Connecting to local MikroTik and registering with VPS Hub...</div>';
+    log.innerHTML = '<div class="log-row">⏳ Connecting to router and setting up secure cloud link...</div>';
 
     try {
       const res = await fetch('/api/onboard', {
@@ -254,24 +335,26 @@
         body: JSON.stringify({
           localIp, localUsername, localPassword, routerName,
           cloudUrl, adminToken, vpsHubId: vpsHubId || null, locationId: locationId || null,
-          alreadyConfigured,
+          alreadyConfigured: routerMode !== 'fresh',
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Onboarding failed');
+      if (!res.ok || !data.success) throw new Error(data.error || 'Connection failed');
 
       log.innerHTML = (data.steps || []).map((s) =>
-        `<div class="log-row">${s.status === 'done' ? '✅' : '⏳'} [${s.step}] ${s.detail}</div>`
+        `<div class="log-row">${s.status === 'done' ? '✓' : '…'} ${s.detail}</div>`
       ).join('');
 
+      document.getElementById('pill2').className = 'step-pill done';
+      document.getElementById('pill3').className = 'step-pill done';
       box.className = 'status-box status-ok';
-      box.textContent = `🎉 SUCCESS! "${data.router.name}" is now registered on ${data.vps.public_ip}:${data.vps.external_port} (Tunnel ${data.vps.wg_tunnel_ip}) with MAC-Cookie Auto-Reconnect & Strict First-Login Wall-Clock Expiry v3 active! You can now start generating & selling vouchers immediately.`;
+      box.textContent = `🎉 "${data.router.name}" is connected and ready to generate & sell vouchers!`;
     } catch (err) {
       box.className = 'status-box status-err';
-      box.textContent = `✗ ${err.message}`;
+      box.textContent = `Could not connect router: ${err.message}`;
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Auto-Configure & Connect Router';
+      btn.textContent = 'Connect Router Automatically';
     }
   }
 </script>

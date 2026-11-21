@@ -5,6 +5,7 @@ import { generateBootstrapToken, hashBootstrapToken } from '@/lib/zero-touch-onb
 import {
   maskVpsHub,
   suggestNextVpsSubnet,
+  parseCidrSubnet,
   DEFAULT_PORT_RANGE_START,
   DEFAULT_PORT_RANGE_END,
   DEFAULT_MAX_ROUTERS_PER_HUB,
@@ -31,10 +32,21 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const name = String(body.name || '').trim();
     const { data: existingHubs } = await supabaseAdmin.from('vps_hubs').select('wg_subnet');
-    const wgSubnet = String(body.wg_subnet || '').trim() || suggestNextVpsSubnet(existingHubs || []);
+    let wgSubnet;
+    try {
+      wgSubnet = parseCidrSubnet(String(body.wg_subnet || '').trim() || suggestNextVpsSubnet(existingHubs || [])).cidr;
+    } catch (cidrErr) {
+      return NextResponse.json({ success: false, error: cidrErr.message }, { status: 400 });
+    }
     const wgPort = Number(body.wg_port) || 51820;
     const portStart = Number(body.port_range_start) || DEFAULT_PORT_RANGE_START;
     const portEnd = Number(body.port_range_end) || DEFAULT_PORT_RANGE_END;
+    if (!Number.isInteger(wgPort) || wgPort < 1024 || wgPort > 65535) {
+      return NextResponse.json({ success: false, error: 'wg_port must be between 1024 and 65535' }, { status: 400 });
+    }
+    if (!Number.isInteger(portStart) || !Number.isInteger(portEnd) || portStart < 1024 || portEnd > 65535 || portStart > portEnd) {
+      return NextResponse.json({ success: false, error: 'port_range_start and port_range_end must be 1024-65535 with start <= end' }, { status: 400 });
+    }
     const maxRouters = Math.max(1, Number(body.max_routers) || DEFAULT_MAX_ROUTERS_PER_HUB);
     const isDefault = Boolean(body.is_default);
 
