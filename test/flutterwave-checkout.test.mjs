@@ -750,10 +750,28 @@ test('Super Admin direct wallet funding uses exact 3-arg adjust_wallet_balance R
   }));
   assert.equal(overdraftRes.status, 400);
 
-  // 3. Verify OPay, Moniepoint, and PalmPay mobile API domains are in WalledGardenTab and auto-setup
+  // 3. Verify OPay, Moniepoint, and PalmPay mobile API domains (wildcards, CNAME double-wildcards, and exact hostnames for RouterOS active CNAME->IP resolution) are in WalledGardenTab and auto-setup
   const wgSrc = await read('app/super-admin/components/WalledGardenTab.js');
   const autoSetupSrc = await read('app/api/mikrotik/auto-setup/route.js');
-  for (const domain of ['*opaycheckout.com', '*opay-inc.com', '*palmpay-inc.com', '*transsnet.com', '*moniepoint.com', '*moniepoint.ng']) {
+  for (const domain of [
+    '*opaycheckout.com',
+    '*opay-inc.com',
+    '*opayweb.com*',
+    'api.opayweb.com',
+    'gw-ng.opayweb.com',
+    'wallet-transaction.opayweb.com',
+    'liveapi.opaycheckout.com',
+    '*palmpay-inc.com',
+    '*palmpay-inc.com*',
+    '*transsnet.com',
+    '*transspay.net*',
+    'open-gw-prod.palmpay-inc.com',
+    'ms.palmpay-inc.com',
+    'riskopsfinger.transspay.net',
+    '*moniepoint.com',
+    '*moniepoint.ng',
+    'api-gateway.moniepoint.com',
+  ]) {
     assert.ok(wgSrc.includes(domain), `WalledGardenTab must include ${domain}`);
     assert.ok(autoSetupSrc.includes(domain), `auto-setup must include ${domain}`);
   }

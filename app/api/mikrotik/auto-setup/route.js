@@ -472,6 +472,7 @@ export async function POST(request) {
       const existingWG = await mikrotikCall('/rest/ip/hotspot/walled-garden') || [];
       const existingWGIP = await mikrotikCall('/rest/ip/hotspot/walled-garden/ip') || [];
       const existingWGHosts = existingWG.map(w => w['dst-host'] || '');
+      const existingWGIPHosts = existingWGIP.map(w => w['dst-host'] || '');
 
       // Determine the web application domain dynamically from branding settings or env
       const dynamicAppDomains = [];
@@ -553,28 +554,141 @@ export async function POST(request) {
         '*.threatmetrix.com',
 
         // Digital Banks & Fintechs (OPay, Moniepoint, PalmPay — full mobile app API packs)
+        // Includes double-sided wildcards (*domain*) to match Cloudflare/Akamai/Aliyun CNAME targets
+        // AND exact production hostnames so RouterOS proactively resolves CNAME chains into dynamic=true Layer-3 IP rules
         '*opayweb.com',
+        '*opayweb.com*',
         '*opaycheckout.com',
+        '*opaycheckout.com*',
         '*opay-inc.com',
+        '*opay-inc.com*',
         '*opay.com',
         '*operapay.com',
+        '*operapay.com*',
+        '*operacdn.com*',
         '*opayng.com',
         '*opay.ng',
         '*opay-cloud.com',
         '*opaystatic.com',
+        'api.opayweb.com',
+        'gw-ng.opayweb.com',
+        'wallet-transaction.opayweb.com',
+        'wallet-aatransfer.opayweb.com',
+        'wallet-living.opayweb.com',
+        'wallet-ws.opayweb.com',
+        'opay-rcc-security-api.opayweb.com',
+        'opay-sdk-tddevice-api.opayweb.com',
+        'opay-marketing-task-web-api.opayweb.com',
+        'offline-api-user.opayweb.com',
+        'config-home.opayweb.com',
+        'contacts.opayweb.com',
+        'gonggong-marketing.opayweb.com',
+        'files.opayweb.com',
+        'ntp.opayweb.com',
+        'cashier.opayweb.com',
+        'payapi.opayweb.com',
+        'ab-test.opayweb.com',
+        'apm.opayweb.com',
+        'opay-anti-fraud.opayweb.com',
+        'opay-iam-api-ng.opayweb.com',
+        'sms.opayweb.com',
+        'tracking.gateway.opayweb.com',
+        'open.opayweb.com',
+        'pos.opayweb.com',
+        'm.opayweb.com',
+        'static.opayweb.com',
+        'userh5.opayweb.com',
+        'cardh5.opayweb.com',
+        'paymenth5.opayweb.com',
+        'owealthh5.opayweb.com',
+        'cscenter-opayh5.opayweb.com',
+        'ng-cs.opayweb.com',
+        'opayweb.com',
+        'www.opayweb.com',
+        'liveapi.opaycheckout.com',
+        'cashier.opaycheckout.com',
+        'express.opaycheckout.com',
+        'opaycheckout.com',
+        'www.opaycheckout.com',
+        'mcp.operacdn.com',
+        'pns.operacdn.com',
+
         '*palmpay-inc.com',
+        '*palmpay-inc.com*',
         '*palmpay.com',
+        '*palmpay.com*',
         '*palmpay.co',
+        '*palmpay.co*',
         '*palmpay.app',
+        '*palmpay.app*',
         '*palmpay.ng',
         '*palmpayapp.com',
         '*transsnet.com',
+        '*transsnet.com*',
         '*transspay.net',
+        '*transspay.net*',
         '*transsnetfinancial.com',
+        'open-gw-prod.palmpay-inc.com',
+        'accept.palmpay-inc.com',
+        'ms.palmpay-inc.com',
+        'channel.palmpay-inc.com',
+        'portal.palmpay-inc.com',
+        'admin.palmpay-inc.com',
+        'app-update.palmpay-inc.com',
+        'ng-freeswitch.palmpay-inc.com',
+        'call-service-freeswitch.palmpay-inc.com',
+        'mp-dcir-portal.palmpay-inc.com',
+        'docs.palmpay-inc.com',
+        'palmpay.com',
+        'www.palmpay.com',
+        'business.palmpay.com',
+        'checkout.palmpay.com',
+        'global-cdn.palmpay.com',
+        'link.palmpay.com',
+        'cf-channel.palmpay.com',
+        'webmerchant-api.palmpay.com',
+        'applypos.palmpay.com',
+        'info.palmpay.com',
+        'docs.palmpay.com',
+        'h5.palmpay.app',
+        'www.palmpay.co',
+        'business.palmpay.co',
+        'palmpayapp.com',
+        'www.palmpayapp.com',
+        'riskopsfinger.transspay.net',
+        'cih5.transspay.net',
+        'testh5.transspay.net',
+        'ng-apptest.transspay.net',
+        'transsnet.com',
+        'www.transsnet.com',
+
         '*moniepoint.com',
+        '*moniepoint.com*',
         '*moniepoint.ng',
         '*teamapt.com',
+        '*teamapt.com*',
         '*monnify.com',
+        '*monnify.com*',
+        'api-gateway.moniepoint.com',
+        'api-gateway-v2.moniepoint.com',
+        'api.moniepoint.com',
+        'hermes-ingest.moniepoint.com',
+        'customer-analytics-service.moniepoint.com',
+        'consent-management-service.moniepoint.com',
+        'mfa.moniepoint.com',
+        'atm.moniepoint.com',
+        'mobile.atm.moniepoint.com',
+        'moniepoint.com',
+        'api.monnify.com',
+        'sdk.monnify.com',
+
+        '*.dscr.akamai.net',
+        '*.akamaiedge.net',
+        '*.edgesuite.net',
+        '*.eu-central-1.alb.aliyuncs.com',
+        '*.eu-central-1.nlb.aliyuncs.com',
+        '*.eu-central-1.alb.aliyuncsslbintl.com',
+        '*.eu-central-1.nlb.aliyuncsslbintl.com',
         'fcm.googleapis.com',
         'firebaseinstallations.googleapis.com',
         'firebaseremoteconfig.googleapis.com',
@@ -683,6 +797,7 @@ export async function POST(request) {
 
       let wgCreated = 0;
       for (const domain of walledGardenDomains) {
+        let addedAny = false;
         if (!existingWGHosts.some(h => h === domain)) {
           try {
             // HTTP-level (allow)
@@ -691,18 +806,22 @@ export async function POST(request) {
               'dst-host': domain,
               comment: 'African Network Auto Setup',
             });
-            wgCreated++;
+            addedAny = true;
           } catch {}
+        }
 
+        if (!existingWGIPHosts.some(h => h === domain)) {
           try {
-            // IP-level (accept, critical for HTTPS/Supabase)
+            // IP-level (accept, critical for HTTPS/Supabase & active CNAME->IP resolution)
             await mikrotikCall('/rest/ip/hotspot/walled-garden/ip/add', 'POST', {
               action: 'accept',
               'dst-host': domain,
               comment: 'African Network Auto Setup (HTTPS)',
             });
+            addedAny = true;
           } catch {}
         }
+        if (addedAny) wgCreated++;
       }
 
       results.push({
