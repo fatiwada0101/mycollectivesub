@@ -695,7 +695,6 @@ export async function POST(request) {
         'identitytoolkit.googleapis.com',
         'securetoken.googleapis.com',
         'www.recaptcha.net',
-        'www.gstatic.com',
         'challenges.cloudflare.com',
         '*.kuda.com',
         '*.kudabank.com',
@@ -743,9 +742,10 @@ export async function POST(request) {
         '*.optimusbank.com',
         '*.signaturebankng.com',
 
-        // Web Fonts & CDN Assets (Note: captive probe domains like captive.apple.com MUST NOT be here)
+        // Web Fonts & CDN Assets
+        // CRITICAL: Never add *.gstatic.com or www.gstatic.com — they match / share Anycast IPs with
+        // connectivitycheck.gstatic.com/generate_204 and suppress the Android Captive Portal login popup!
         '*.googleapis.com',
-        '*.gstatic.com',
         '*.cloudflare.com',
       ];
 
@@ -759,14 +759,45 @@ export async function POST(request) {
       });
 
       // CRITICAL FOR IOS/ANDROID CAPTIVE POPUP DETECTION & PROXY LOOP PREVENTION:
-      // 1. Remove captive probe domains (iPhones/Androids suppress captive popup if probe is allowed)
+      // 1. Remove captive probe domains (iPhones/Androids suppress captive popup if probe is allowed, including *.gstatic.com / www.gstatic.com)
       // 2. Remove router's own hotspot domain/IP (prevents HttpProxy connection refused loop)
-      const captiveProbeDomains = ['captive.apple.com', 'connectivitycheck.gstatic.com', '*.msftconnecttest.com', 'msftconnecttest.com'];
+      const captiveProbeDomains = [
+        'captive.apple.com',
+        'connectivitycheck.gstatic.com',
+        'connectivitycheck.android.com',
+        '*.gstatic.com',
+        '*gstatic.com',
+        '*gstatic.com*',
+        'www.gstatic.com',
+        'gstatic.com',
+        'clients3.google.com',
+        'clients1.google.com',
+        '*.msftconnecttest.com',
+        'msftconnecttest.com',
+        '*.msftncsi.com',
+        'detectportal.firefox.com',
+        'nmcheck.gnome.org',
+      ];
       const hotspotOwnDomains = [...activeDnsNames, hotspotGatewayIp.toLowerCase(), '10.5.50.1'];
+
+      const isBannedCaptiveProbe = (host) => {
+        const h = String(host || '').toLowerCase().trim();
+        return captiveProbeDomains.some(cp =>
+          h === cp ||
+          h.includes('captive.apple') ||
+          h.includes('connectivitycheck') ||
+          h.includes('msftconnecttest') ||
+          h.includes('msftncsi') ||
+          h.includes('clients3.google') ||
+          h.includes('clients1.google') ||
+          h.includes('detectportal.firefox') ||
+          h.includes('nmcheck.gnome')
+        );
+      };
 
       for (const entry of existingWG) {
         const host = (entry['dst-host'] || '').toLowerCase();
-        const isProbe = captiveProbeDomains.some(cp => host === cp || host.includes('captive.apple') || host.includes('connectivitycheck.gstatic') || host.includes('msftconnecttest'));
+        const isProbe = isBannedCaptiveProbe(host);
         const isOwnHotspot = hotspotOwnDomains.some(od => od && (host === od || host.includes(od)));
         if (isProbe || isOwnHotspot) {
           try {
@@ -781,7 +812,7 @@ export async function POST(request) {
       for (const entry of existingWGIP) {
         const host = (entry['dst-host'] || '').toLowerCase();
         const dstAddr = (entry['dst-address'] || '').toLowerCase();
-        const isProbe = captiveProbeDomains.some(cp => host === cp || host.includes('captive.apple') || host.includes('connectivitycheck.gstatic') || host.includes('msftconnecttest'));
+        const isProbe = isBannedCaptiveProbe(host);
         const isOwnHotspot = hotspotOwnDomains.some(od => od && (host === od || host.includes(od) || dstAddr.includes(od)));
         if (isProbe || isOwnHotspot) {
           try {
@@ -792,6 +823,20 @@ export async function POST(request) {
             } catch {}
           }
         }
+      }
+
+      // Allow TCP port 853 (Android Private DNS / DNS-over-TLS) in /ip/hotspot/walled-garden/ip
+      // Prevents Android phones from displaying "Private DNS server cannot be accessed" before hotspot login
+      const hasPort853 = existingWGIP.some(e => e.protocol === 'tcp' && e['dst-port'] === '853' && e.action === 'accept');
+      if (!hasPort853) {
+        try {
+          await mikrotikCall('/rest/ip/hotspot/walled-garden/ip/add', 'POST', {
+            action: 'accept',
+            protocol: 'tcp',
+            'dst-port': '853',
+            comment: '[security] Android Private DNS (DoT TCP 853)',
+          });
+        } catch {}
       }
 
 
@@ -835,7 +880,7 @@ export async function POST(request) {
       results.push({ step: 'Walled Garden (Captive Portal)', status: 'warn', detail: 'Could not configure: ' + e.message });
     }
 
-    // ═══ Step 7: NAT Masquerade — internet access after authentication ═══
+    // ═══ Step 7: NAT Masquerade & Captive Portal HTTP Probe Intercept ═══
     try {
       const natRules = await mikrotikCall('/rest/ip/firewall/nat') || [];
       const hasMasquerade = natRules.some(r => r.action === 'masquerade' && r.chain === 'srcnat');
@@ -847,10 +892,35 @@ export async function POST(request) {
           'out-interface-list': 'all',
           comment: 'African Network Hotspot Internet Access',
         });
-        results.push({ step: 'NAT Masquerade', status: 'ok', detail: 'Created — users will have internet access after login' });
-      } else {
-        results.push({ step: 'NAT Masquerade', status: 'ok', detail: 'Already configured' });
       }
+
+      // Ensure unauthenticated HTTP port-80 probes (e.g. connectivitycheck.gstatic.com/generate_204)
+      // are always redirected to Hotspot HTTP Proxy (64874) in pre-hotspot before Layer-3 Anycast IP rules in hs-unauth
+      const hasPreHotspotHttpIntercept = natRules.some(
+        r => r.chain === 'pre-hotspot' && r.protocol === 'tcp' && r['dst-port'] === '80' && r['to-ports'] === '64874'
+      );
+      if (!hasPreHotspotHttpIntercept) {
+        try {
+          await mikrotikCall('/rest/ip/firewall/nat/add', 'POST', {
+            chain: 'pre-hotspot',
+            hotspot: '!auth',
+            'dst-address-type': '!local',
+            protocol: 'tcp',
+            'dst-port': '80',
+            action: 'redirect',
+            'to-ports': '64874',
+            comment: 'African Network Captive Portal Instant HTTP Probe Intercept',
+          });
+        } catch {}
+      }
+
+      results.push({
+        step: 'NAT Masquerade & Captive Probe Intercept',
+        status: 'ok',
+        detail: hasMasquerade
+          ? 'Masquerade & instant port-80 captive portal probe redirect verified'
+          : 'Created masquerade & instant port-80 captive portal probe redirect',
+      });
     } catch (e) {
       results.push({ step: 'NAT Masquerade', status: 'warn', detail: 'Could not add NAT rule: ' + e.message });
     }

@@ -775,6 +775,9 @@ test('Super Admin direct wallet funding uses exact 3-arg adjust_wallet_balance R
     assert.ok(wgSrc.includes(domain), `WalledGardenTab must include ${domain}`);
     assert.ok(autoSetupSrc.includes(domain), `auto-setup must include ${domain}`);
   }
+  assert.ok(!wgSrc.includes("{ domain: 'www.gstatic.com'"), 'WalledGardenTab must not whitelist www.gstatic.com (breaks Android captive portal probe)');
+  assert.ok(autoSetupSrc.includes("'dst-port': '853'"), 'auto-setup must allow TCP port 853 for Android Private DNS');
+  assert.ok(autoSetupSrc.includes("chain: 'pre-hotspot'") && autoSetupSrc.includes("'to-ports': '64874'"), 'auto-setup must redirect unauthenticated port-80 probes in pre-hotspot');
 });
 
 test('Guest Wallet: localStorage token + Flutterwave webhook & topup credit full ₦100 (even after ₦3 fee) and purchase deducts atomically with router-failure refund', async () => {

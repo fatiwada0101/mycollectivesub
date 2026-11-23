@@ -49,10 +49,36 @@ export async function POST(request) {
       }
     } catch {}
 
-    // Prevent adding the router's own hotspot domain or internal IP
-    if (lowerHost.includes('asuktech.net') || lowerHost.includes(hotspotDomain) || lowerHost.includes('10.5.50.')) {
+    // Prevent adding the router's own hotspot domain, internal IP, or OS captive portal probe domains
+    const bannedCaptiveProbes = [
+      '*.gstatic.com',
+      '*gstatic.com',
+      '*gstatic.com*',
+      'www.gstatic.com',
+      'gstatic.com',
+      'connectivitycheck.gstatic.com',
+      'connectivitycheck.android.com',
+      'clients3.google.com',
+      'clients1.google.com',
+      'captive.apple.com',
+      'msftconnecttest.com',
+      '*.msftconnecttest.com',
+      'msftncsi.com',
+      '*.msftncsi.com',
+      'detectportal.firefox.com',
+      'nmcheck.gnome.org',
+    ];
+    if (
+      lowerHost.includes('asuktech.net') ||
+      lowerHost.includes(hotspotDomain) ||
+      lowerHost.includes('10.5.50.') ||
+      bannedCaptiveProbes.includes(lowerHost) ||
+      lowerHost.includes('connectivitycheck') ||
+      lowerHost.includes('captive.apple') ||
+      lowerHost.includes('msftconnecttest')
+    ) {
       return NextResponse.json({
-        error: `Cannot add hotspot portal domain ("${hotspotDomain}") or internal router IP to Walled Garden. Doing so bypasses captive portal interception and causes HttpProxy Gateway Timeout loops.`,
+        error: `Cannot add "${cleanHost}" to Walled Garden. Captive portal probe domains (like *.gstatic.com / www.gstatic.com / captive.apple.com) and the router's own hotspot domain must stay intercepted so phones automatically open the Wi-Fi login popup.`,
       }, { status: 400 });
     }
 

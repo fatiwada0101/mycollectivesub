@@ -236,13 +236,14 @@ export default function WalledGardenTab({
     { domain: '*.eu-central-1.nlb.aliyuncsslbintl.com', label: 'PalmPay Aliyun Intl NLB CNAME Target', category: 'bank' },
 
     // Mobile Bank App Auth / OTP / Anti-Bot Dependencies
+    // NOTE: Never include *.gstatic.com or www.gstatic.com here — they share Google Anycast IPs
+    // (142.251.150.120..157.120) with connectivitycheck.gstatic.com/generate_204 and suppress the Android Captive Portal popup.
     { domain: 'fcm.googleapis.com', label: 'Bank App Push / OTP', category: 'security' },
     { domain: 'firebaseinstallations.googleapis.com', label: 'Bank App Init', category: 'security' },
     { domain: 'firebaseremoteconfig.googleapis.com', label: 'Bank App Config', category: 'security' },
     { domain: 'identitytoolkit.googleapis.com', label: 'Bank App Auth', category: 'security' },
     { domain: 'securetoken.googleapis.com', label: 'Bank App Session Token', category: 'security' },
     { domain: 'www.recaptcha.net', label: 'Bank App Verification', category: 'security' },
-    { domain: 'www.gstatic.com', label: 'Bank Verification Assets', category: 'security' },
     { domain: 'challenges.cloudflare.com', label: 'Bank API Verification', category: 'security' },
   ];
 
