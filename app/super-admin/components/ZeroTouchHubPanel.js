@@ -416,27 +416,25 @@ export default function ZeroTouchHubPanel({
           {/* ── TAB 1: CONNECT A ROUTER ── */}
           {activeTab === 'router' && (
             <div className="ux-form-card">
-              {hubs.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '18px 12px' }}>
-                  <div style={{ fontSize: '28px', marginBottom: '6px' }}>🌐</div>
-                  <h4 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: 800 }}>
-                    Step 1: Add Your First Cloud Server (Done Once)
-                  </h4>
-                  <p className="ux-subtitle" style={{ maxWidth: '460px', margin: '0 auto 14px' }}>
-                    Connect your Ubuntu VPS once with a single command. After that, every MikroTik router connects automatically with zero SSH.
-                  </p>
+              {hubs.length === 0 && !bootstrapResult?.bootstrap?.one_line_command && (
+                <div className="ux-alert-bar" style={{ marginTop: 0, marginBottom: '12px' }}>
+                  <span>
+                    No Cloud Server added yet — you can generate and run the 1-line MikroTik command now, and it will auto-connect within 60s when you add a Cloud Server later.
+                  </span>
                   <button
                     type="button"
-                    className="ux-btn ux-btn-primary"
+                    className="ux-btn ux-btn-secondary ux-btn-sm"
                     onClick={() => {
                       setActiveTab('servers');
                       setServerAddMode('auto');
                     }}
                   >
-                    Set Up Cloud Server →
+                    + Add Cloud Server
                   </button>
                 </div>
-              ) : bootstrapResult?.bootstrap?.one_line_command ? (
+              )}
+
+              {bootstrapResult?.bootstrap?.one_line_command ? (
                 /* Clean 3-Step Result Card */
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -445,7 +443,9 @@ export default function ZeroTouchHubPanel({
                         {routerVerifiedOnline ? '🎉 Router Connected!' : `Ready to Connect "${bootstrapResult.router.name}"`}
                       </h4>
                       <p className="ux-subtitle">
-                        Assigned server: <strong>{bootstrapResult.vps.name}</strong> ({bootstrapResult.vps.public_ip}:{bootstrapResult.vps.external_port})
+                        {bootstrapResult.vps
+                          ? <>Assigned server: <strong>{bootstrapResult.vps.name}</strong> ({bootstrapResult.vps.public_ip}:{bootstrapResult.vps.external_port})</>
+                          : <>Staged without a Cloud Server — paste the command now, then add a Cloud Server later to auto-link within 60s.</>}
                       </p>
                     </div>
                     <button

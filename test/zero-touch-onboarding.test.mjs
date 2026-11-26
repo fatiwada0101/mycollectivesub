@@ -561,7 +561,7 @@ test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$w
   assert.ok(deskMain.includes('username: adminUser'), 'desktop app must send username to /api/super-admin/auth');
   assert.ok(connHtml.includes('id="adminUser"'), 'local connector UI must provide Super Admin username input');
   assert.ok(mikrotikSrc.includes('expiry_paused_by_billing'), 'cleanupExpiredHotspotUsers must respect billing expiry pause');
-  assert.ok(vpsSyncSrc.includes('\\\\$wgK'), 'vps-sync refreshed watchdog must escape \\$wgK');
+  assert.ok(vpsSyncSrc.includes('buildWatchdogScriptSource'), 'vps-sync refreshed watchdog must reuse shared buildWatchdogScriptSource helper');
   assert.ok(migrateSrc.includes('UUID_RE.test(targetHubId)'), 'vps migrate must validate targetHubId UUID before .or() filter');
   assert.ok(onboardSrc.includes('removeRouterPeerFromVps'), 'onboard route must roll back VPS peer on DB insert failure');
   assert.ok(bootstrapSrc.includes(".eq('bootstrap_token_hash', tokenHash)"), 'bootstrap callback must atomically claim single-use token');
@@ -596,9 +596,23 @@ test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$w
   assert.ok(vpsSyncSrc.includes('[:pick $curPeers 0]'), 'vps-sync must safely index RouterOS find arrays');
   assert.ok(validateRoute.includes('toRouterUptime'), 'voucher validate auto-provision must use universal durationSeconds mapping');
 
-  // 6. Pre-configured router hardening: no invalid place-before=0 in .rsc, free WireGuard listen-port loop, and localhost URL bypass
+  // 6. Pre-configured router hardening: no invalid place-before=0 in .rsc, free WireGuard listen-port loop, localhost URL bypass, and deferred-VPS bootstrap
   assert.ok(!scriptOrPlaceBeforeHasZero(wdScript), 'zero-touch .rsc script must not use place-before=0 without an interactive print');
   assert.ok(wdScript.includes('place-before=$mcsFirstFw') && wdScript.includes('wgListenPort'), 'zero-touch .rsc must resolve firewall .id dynamically and avoid port collisions');
+  const deferredScript = generateZeroTouchRouterScript({
+    routerName: 'Rimi Deferred',
+    apiUsername: 'mycollectivesub',
+    apiPassword: 'StrongPassword123',
+    allowDeferredVps: true,
+    callbackUrl: 'https://www.mycollectivesub.si/api/onboarding/bootstrap',
+    bootstrapToken: 'tok123',
+    vpsSyncUrl: 'https://www.mycollectivesub.si/api/onboarding/vps-sync',
+    pollingSecret: 'sec123',
+  });
+  assert.ok(deferredScript.includes('Awaiting VPS Hub') && !deferredScript.includes('/interface wireguard peers add'), 'deferred VPS script must initialize wg-vps without adding an empty peer');
+  assert.ok(deferredScript.includes('vps-sync') && deferredScript.includes('/api/onboarding/bootstrap'), 'deferred VPS script must keep both bootstrap callback and 60s vps-sync watchdog active');
+  assert.throws(() => generateZeroTouchRouterScript({ routerName: 'MissingVps' }), /vpsPublicIp, vpsWgPublicKey, and tunnelIp are required/);
+  assert.ok(bootstrapSrc.includes("awaiting_vps") && vpsInstSrc.includes('attachAwaitingRoutersToHub'), 'bootstrap & vps-installer must auto-attach awaiting routers once a VPS hub is added');
   const prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
   try {
     process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';

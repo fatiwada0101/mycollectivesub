@@ -56,33 +56,45 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'router_name is required' }, { status: 400 });
     }
 
-    // 1. Resolve target VPS Hub with automatic multi-VPS capacity overflow (scales to 10,000+ routers)
-    const selection = await selectVpsHubWithCapacity(body.vps_hub_id || null, {
-      allowOverflow: body.allow_overflow !== false,
-    });
-    let hub = selection.hub;
-    const overflowedFromHub = selection.overflowedFrom
-      ? { id: selection.overflowedFrom.id, name: selection.overflowedFrom.name }
-      : null;
+    // 1. Resolve target VPS Hub with automatic multi-VPS capacity overflow (or stage deferred VPS for bootstrap_script)
+    let hub = null;
+    let slot = null;
+    let overflowedFromHub = null;
+    try {
+      const selection = await selectVpsHubWithCapacity(body.vps_hub_id || null, {
+        allowOverflow: body.allow_overflow !== false,
+      });
+      hub = selection.hub;
+      overflowedFromHub = selection.overflowedFrom
+        ? { id: selection.overflowedFrom.id, name: selection.overflowedFrom.name }
+        : null;
 
-    // Ensure we know the VPS WireGuard public key (auto-fetch via /health if missing)
-    if (!hub.wg_public_key) {
-      const health = await testVpsHubConnection(hub);
-      if (!health.wgPublicKey) {
-        return NextResponse.json(
-          { success: false, error: `VPS hub "${hub.name}" did not return a WireGuard public key on /health` },
-          { status: 502 }
-        );
+      // Ensure we know the VPS WireGuard public key (auto-fetch via /health if missing)
+      if (!hub.wg_public_key) {
+        const health = await testVpsHubConnection(hub);
+        if (!health.wgPublicKey) {
+          return NextResponse.json(
+            { success: false, error: `VPS hub "${hub.name}" did not return a WireGuard public key on /health` },
+            { status: 502 }
+          );
+        }
+        hub = { ...hub, wg_public_key: health.wgPublicKey, wg_port: health.wgPort || hub.wg_port, wg_subnet: health.wgSubnet || hub.wg_subnet };
+        await supabaseAdmin
+          .from('vps_hubs')
+          .update({ wg_public_key: health.wgPublicKey, status: 'online', last_health_at: new Date().toISOString() })
+          .eq('id', hub.id);
       }
-      hub = { ...hub, wg_public_key: health.wgPublicKey, wg_port: health.wgPort || hub.wg_port, wg_subnet: health.wgSubnet || hub.wg_subnet };
-      await supabaseAdmin
-        .from('vps_hubs')
-        .update({ wg_public_key: health.wgPublicKey, status: 'online', last_health_at: new Date().toISOString() })
-        .eq('id', hub.id);
-    }
 
-    // 2. Allocate conflict-free (wg_tunnel_ip, external_port)
-    const slot = await allocateRouterSlotForHub(hub);
+      // 2. Allocate conflict-free (wg_tunnel_ip, external_port)
+      slot = await allocateRouterSlotForHub(hub);
+    } catch (hubErr) {
+      if (mode === 'bootstrap_script' && !body.vps_hub_id && /No active VPS hub/i.test(hubErr.message || '')) {
+        hub = null;
+        slot = null;
+      } else {
+        throw hubErr;
+      }
+    }
 
     // ── MODE A: Local Plug & Play Connector (Mikroticket-style) ─────────────
     if (mode === 'local_connector') {
@@ -175,10 +187,10 @@ export async function POST(request) {
       });
     }
 
-    // ── MODE B: 1-Line Cloud Bootstrap Token (Web-Only Fallback) ────────────
+    // ── MODE B: 1-Line Cloud Bootstrap Token (Web-Only Fallback, works even before a VPS Hub is added) ──
     const rawToken = generateBootstrapToken();
     const tokenHash = hashBootstrapToken(rawToken);
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
     const { data: pendingRouter, error: pendingErr } = await supabaseAdmin
       .from('routers')
@@ -187,8 +199,8 @@ export async function POST(request) {
         identity,
         location_id: locationId,
         connection_mode: 'direct',
-        ip_address: hub.public_ip,
-        port: Number(slot.external_port),
+        ip_address: hub?.public_ip || null,
+        port: Number(slot?.external_port) || 443,
         username: apiUsername,
         password: apiPassword,
         use_ssl: true,
@@ -196,8 +208,8 @@ export async function POST(request) {
         hotspot_server_name: 'hotspot1',
         status: 'offline',
         is_active: true,
-        vps_hub_id: hub.id,
-        wg_tunnel_ip: slot.wg_tunnel_ip,
+        vps_hub_id: hub?.id || null,
+        wg_tunnel_ip: slot?.wg_tunnel_ip || null,
         polling_secret: pollingSecret,
         onboarding_status: 'pending_bootstrap',
         bootstrap_token_hash: tokenHash,
@@ -216,16 +228,19 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       mode: 'bootstrap_script',
+      awaiting_vps: !hub,
       router: pendingRouter,
-      vps: {
-        id: hub.id,
-        name: hub.name,
-        public_ip: hub.public_ip,
-        wg_subnet: hub.wg_subnet || DEFAULT_WG_SUBNET,
-        wg_tunnel_ip: slot.wg_tunnel_ip,
-        external_port: Number(slot.external_port),
-        overflowed_from_hub: overflowedFromHub,
-      },
+      vps: hub
+        ? {
+            id: hub.id,
+            name: hub.name,
+            public_ip: hub.public_ip,
+            wg_subnet: hub.wg_subnet || DEFAULT_WG_SUBNET,
+            wg_tunnel_ip: slot.wg_tunnel_ip,
+            external_port: Number(slot.external_port),
+            overflowed_from_hub: overflowedFromHub,
+          }
+        : null,
       bootstrap: {
         expires_at: expiresAt,
         script_url: scriptUrl,

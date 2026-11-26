@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { registerRouterPeerOnVps, isValidWgPublicKey, getHubCidrMask, getHubGatewayIp, DEFAULT_WG_SUBNET } from '@/lib/vps-hub.js';
-import { escapeRouterOsString, resolvePublicBaseUrl } from '@/lib/zero-touch-onboarding.js';
+import { escapeRouterOsString, resolvePublicBaseUrl, buildWatchdogScriptSource } from '@/lib/zero-touch-onboarding.js';
 import { logger } from '@/lib/logger.js';
 
 /**
@@ -49,7 +49,7 @@ export async function GET(request) {
     const baseUrl = resolvePublicBaseUrl(request);
     const vpsSyncUrl = `${baseUrl}/api/onboarding/vps-sync`;
     const heartbeatUrl = `${baseUrl}/api/mikrotik/heartbeat?secret=${encodeURIComponent(secret)}&preserve_ip=1`;
-    const refreshedWatchdog = `:if ([/ping ${hubGwIp} count=2] = 0) do={ :do { /interface wireguard disable [find where name=\\"wg-vps\\"]; :delay 2s; /interface wireguard enable [find where name=\\"wg-vps\\"] } on-error={}; :do { :local wgK [/interface wireguard get [find where name=\\"wg-vps\\"] public-key]; /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}\\" http-method=post http-header-field=\\"Content-Type: application/json\\" http-data=(\\"{\\\\\\"secret\\\\\\":\\\\\\"${escapeRouterOsString(secret)}\\\\\\",\\\\\\"wg_public_key\\\\\\":\\\\\\"\\" . \\$wgK . \\"\\\\\\"}\\") mode=https check-certificate=no keep-result=no } on-error={}; :do { /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}?secret=${escapeRouterOsString(secret)}\\" dst-path=\\"mcs-vps-sync.rsc\\" mode=https check-certificate=no; /import mcs-vps-sync.rsc; /file remove mcs-vps-sync.rsc } on-error={} }; :do { /tool fetch url=\\"${escapeRouterOsString(heartbeatUrl)}\\" mode=https check-certificate=no keep-result=no } on-error={}`;
+    const refreshedWatchdog = buildWatchdogScriptSource({ hubGatewayIp: hubGwIp, vpsSyncUrl, pollingSecret: secret, heartbeatUrl });
 
     // Only touch wg-vps if endpoint, port, public-key, or tunnel IP actually changed (idempotent, zero churn!)
     const script = [

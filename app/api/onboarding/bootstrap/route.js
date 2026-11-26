@@ -33,7 +33,8 @@ export async function GET(request) {
     }
 
     const hub = router.vps_hubs;
-    if (!hub || !hub.public_ip || !hub.wg_public_key) {
+    const isDeferredVps = !router.vps_hub_id;
+    if (!isDeferredVps && (!hub || !hub.public_ip || !hub.wg_public_key)) {
       return new NextResponse('# Error: Assigned VPS hub is missing WireGuard configuration\n', { status: 500, headers: { 'Content-Type': 'text/plain' } });
     }
 
@@ -50,13 +51,14 @@ export async function GET(request) {
       routerName: router.name,
       apiUsername: router.username || 'mycollectivesub',
       apiPassword: router.password || '',
-      vpsPublicIp: hub.public_ip,
-      vpsWgPort: hub.wg_port || 51820,
-      vpsWgPublicKey: hub.wg_public_key,
-      vpsWgSubnet: hub.wg_subnet || '10.100.0.0/16',
-      tunnelIp: router.wg_tunnel_ip,
+      vpsPublicIp: hub?.public_ip || '',
+      vpsWgPort: hub?.wg_port || 51820,
+      vpsWgPublicKey: hub?.wg_public_key || '',
+      vpsWgSubnet: hub?.wg_subnet || '10.100.0.0/16',
+      tunnelIp: router.wg_tunnel_ip || '',
       dnsName: router.dns_name || 'hotspot.mycollectivesub.net',
       preserveExistingConfig: preserveExisting,
+      allowDeferredVps: isDeferredVps,
       callbackUrl,
       bootstrapToken: token,
       heartbeatUrl,
@@ -109,17 +111,15 @@ export async function POST(request) {
     }
 
     const hub = router.vps_hubs;
-    if (!hub) {
-      return NextResponse.json({ success: false, error: 'VPS hub record missing' }, { status: 500 });
-    }
+    const isDeferredVps = !hub;
 
     // Atomically consume single-use token (optimistic lock prevents concurrent double-registration)
     const { data: claimedRows, error: claimErr } = await supabaseAdmin
       .from('routers')
       .update({
         wg_public_key: wgPublicKey,
-        onboarding_status: 'active',
-        status: 'online',
+        onboarding_status: isDeferredVps ? 'awaiting_vps' : 'active',
+        status: isDeferredVps ? 'offline' : 'online',
         bootstrap_token_hash: null,
         bootstrap_expires_at: null,
         updated_at: new Date().toISOString(),
@@ -131,6 +131,15 @@ export async function POST(request) {
     if (claimErr) throw claimErr;
     if (!claimedRows || claimedRows.length === 0) {
       return NextResponse.json({ success: false, error: 'Bootstrap token already consumed' }, { status: 409 });
+    }
+
+    if (isDeferredVps) {
+      logger.info('Bootstrap callback saved router WG key (awaiting VPS hub):', { router_id: router.id });
+      return NextResponse.json({
+        success: true,
+        awaiting_vps: true,
+        router_id: router.id,
+      });
     }
 
     try {

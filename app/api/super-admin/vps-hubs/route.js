@@ -8,6 +8,7 @@ import {
   testVpsHubConnection,
   suggestNextVpsSubnet,
   parseCidrSubnet,
+  attachAwaitingRoutersToHub,
   DEFAULT_WG_SUBNET,
   DEFAULT_PORT_RANGE_START,
   DEFAULT_PORT_RANGE_END,
@@ -178,6 +179,10 @@ export async function POST(request) {
       throw error;
     }
 
+    if (created.status === 'online') {
+      await attachAwaitingRoutersToHub(created).catch(() => {});
+    }
+
     return NextResponse.json({
       success: true,
       hub: maskVpsHub(created),
@@ -288,10 +293,15 @@ export async function PATCH(request) {
         .select()
         .single();
 
+      const liveHub = refreshed || { ...hub, ...updates };
+      if (health.ok) {
+        await attachAwaitingRoutersToHub(liveHub).catch(() => {});
+      }
+
       return NextResponse.json({
         success: true,
         health,
-        hub: maskVpsHub(refreshed || { ...hub, ...updates }),
+        hub: maskVpsHub(liveHub),
       });
     } catch (healthErr) {
       await supabaseAdmin

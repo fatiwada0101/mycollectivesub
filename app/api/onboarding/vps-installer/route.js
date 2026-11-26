@@ -9,6 +9,7 @@ import {
   assertSafePublicProvisionerUrl,
   getHubGatewayCidr,
   parseCidrSubnet,
+  attachAwaitingRoutersToHub,
   DEFAULT_WG_SUBNET,
   DEFAULT_PORT_RANGE_START,
   DEFAULT_PORT_RANGE_END,
@@ -284,16 +285,17 @@ export async function POST(request) {
       })
       .eq('id', hub.id)
       .eq('bootstrap_token_hash', tokenHash)
-      .select('id');
+      .select('*');
 
     if (updateErr) throw updateErr;
     if (!claimedRows || claimedRows.length === 0) {
       return NextResponse.json({ success: false, error: 'VPS bootstrap token was already consumed' }, { status: 409 });
     }
 
-    logger.info('VPS Hub self-registered via Zero-SSH installer:', { hub_id: hub.id, public_ip: publicIp });
+    const attached = await attachAwaitingRoutersToHub(claimedRows[0]).catch(() => ({ attached: 0, staged: 0 }));
+    logger.info('VPS Hub self-registered via Zero-SSH installer:', { hub_id: hub.id, public_ip: publicIp, ...attached });
 
-    return NextResponse.json({ success: true, hub_id: hub.id, public_ip: publicIp });
+    return NextResponse.json({ success: true, hub_id: hub.id, public_ip: publicIp, ...attached });
   } catch (err) {
     logger.error('POST /api/onboarding/vps-installer error:', { error: err.message });
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
