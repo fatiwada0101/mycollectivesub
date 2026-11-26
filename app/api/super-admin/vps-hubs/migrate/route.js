@@ -70,7 +70,7 @@ async function tryLiveRouterCutover(router, targetHub, pollingSecret, baseUrl) {
       name: 'an-vps-cutover',
       interval: '2s',
       'on-event': cutoverEvent,
-      policy: 'read,write,test',
+      policy: 'ftp,read,write,policy,test,sensitive',
       disabled: 'false',
     });
     return true;

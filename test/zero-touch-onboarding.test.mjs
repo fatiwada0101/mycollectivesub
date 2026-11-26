@@ -522,6 +522,7 @@ test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$w
     vpsWgSubnet: '10.100.0.0/16',
     tunnelIp: '10.100.0.8',
     vpsSyncUrl: 'https://www.mycollectivesub.si/api/onboarding/vps-sync',
+    heartbeatUrl: 'https://www.mycollectivesub.si/api/mikrotik/heartbeat?secret=sec123&preserve_ip=1',
     pollingSecret: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6',
   });
   assert.ok(wdScript.includes('\\. \\$wgK') || wdScript.includes('. \\$wgK'), 'watchdog source must escape \\$wgK inside outer double quotes');
@@ -598,6 +599,8 @@ test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$w
 
   // 6. Pre-configured router hardening: no invalid place-before=0 in .rsc, free WireGuard listen-port loop, localhost URL bypass, and deferred-VPS bootstrap
   assert.ok(!wdScript.includes('primary-ntp='), 'zero-touch .rsc script must not include removed RouterOS v6 primary-ntp parameter');
+  assert.ok(wdScript.includes('policy=ftp,read,write,policy,test,sensitive'), 'watchdog script and scheduler must have ftp,policy,sensitive permissions for /tool fetch dst-path, /import, and WireGuard updates');
+  assert.ok(wdScript.includes('else={ :do { /tool fetch url='), 'watchdog must only report heartbeat online when tunnel ping succeeds');
   assert.ok(!scriptOrPlaceBeforeHasZero(wdScript), 'zero-touch .rsc script must not use place-before=0 without an interactive print');
   assert.ok(wdScript.includes('place-before=$mcsFirstFw') && wdScript.includes('wgListenPort'), 'zero-touch .rsc must resolve firewall .id dynamically and avoid port collisions');
   const deferredScript = generateZeroTouchRouterScript({
