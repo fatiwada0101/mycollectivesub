@@ -597,6 +597,7 @@ test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$w
   assert.ok(validateRoute.includes('toRouterUptime'), 'voucher validate auto-provision must use universal durationSeconds mapping');
 
   // 6. Pre-configured router hardening: no invalid place-before=0 in .rsc, free WireGuard listen-port loop, localhost URL bypass, and deferred-VPS bootstrap
+  assert.ok(!wdScript.includes('primary-ntp='), 'zero-touch .rsc script must not include removed RouterOS v6 primary-ntp parameter');
   assert.ok(!scriptOrPlaceBeforeHasZero(wdScript), 'zero-touch .rsc script must not use place-before=0 without an interactive print');
   assert.ok(wdScript.includes('place-before=$mcsFirstFw') && wdScript.includes('wgListenPort'), 'zero-touch .rsc must resolve firewall .id dynamically and avoid port collisions');
   const deferredScript = generateZeroTouchRouterScript({
