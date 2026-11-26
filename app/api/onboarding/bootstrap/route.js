@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { registerRouterPeerOnVps, isValidWgPublicKey } from '@/lib/vps-hub.js';
-import { hashBootstrapToken, generateZeroTouchRouterScript } from '@/lib/zero-touch-onboarding.js';
+import { hashBootstrapToken, generateZeroTouchRouterScript, resolvePublicBaseUrl } from '@/lib/zero-touch-onboarding.js';
 import { logger } from '@/lib/logger.js';
 
 /**
@@ -37,8 +37,7 @@ export async function GET(request) {
       return new NextResponse('# Error: Assigned VPS hub is missing WireGuard configuration\n', { status: 500, headers: { 'Content-Type': 'text/plain' } });
     }
 
-    const reqOrigin = new URL(request.url).origin;
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
+    const baseUrl = resolvePublicBaseUrl(request);
     const callbackUrl = `${baseUrl}/api/onboarding/bootstrap`;
     const vpsSyncUrl = `${baseUrl}/api/onboarding/vps-sync`;
     const heartbeatUrl = router.polling_secret

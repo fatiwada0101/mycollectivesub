@@ -17,6 +17,7 @@ import {
   generateZeroTouchRouterScript,
   generateBootstrapToken,
   hashBootstrapToken,
+  resolvePublicBaseUrl,
 } from '../lib/zero-touch-onboarding.js';
 import {
   encodeWordLength,
@@ -594,4 +595,22 @@ test('Bugbot deep-dive regression guards: Binary API =.id framing, RouterOS \\$w
   assert.ok(migrateSrc.includes('an-vps-cutover') && migrateSrc.includes('routerTlsAgent'), 'vps migrate must support atomic live cutover over self-signed TLS');
   assert.ok(vpsSyncSrc.includes('[:pick $curPeers 0]'), 'vps-sync must safely index RouterOS find arrays');
   assert.ok(validateRoute.includes('toRouterUptime'), 'voucher validate auto-provision must use universal durationSeconds mapping');
+
+  // 6. Pre-configured router hardening: no invalid place-before=0 in .rsc, free WireGuard listen-port loop, and localhost URL bypass
+  assert.ok(!scriptOrPlaceBeforeHasZero(wdScript), 'zero-touch .rsc script must not use place-before=0 without an interactive print');
+  assert.ok(wdScript.includes('place-before=$mcsFirstFw') && wdScript.includes('wgListenPort'), 'zero-touch .rsc must resolve firewall .id dynamically and avoid port collisions');
+  const prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  try {
+    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';
+    assert.equal(resolvePublicBaseUrl(new Request('https://www.mycollectivesub.si/api/test')), 'https://www.mycollectivesub.si');
+    process.env.NEXT_PUBLIC_APP_URL = 'https://custom.mycollectivesub.si/';
+    assert.equal(resolvePublicBaseUrl(new Request('https://www.mycollectivesub.si/api/test')), 'https://custom.mycollectivesub.si');
+  } finally {
+    if (prevAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
+  }
 });
+
+function scriptOrPlaceBeforeHasZero(rsc) {
+  return /\bplace-before=0\b/.test(rsc);
+}

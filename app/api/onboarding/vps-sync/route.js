@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { registerRouterPeerOnVps, isValidWgPublicKey, getHubCidrMask, getHubGatewayIp, DEFAULT_WG_SUBNET } from '@/lib/vps-hub.js';
-import { escapeRouterOsString } from '@/lib/zero-touch-onboarding.js';
+import { escapeRouterOsString, resolvePublicBaseUrl } from '@/lib/zero-touch-onboarding.js';
 import { logger } from '@/lib/logger.js';
 
 /**
@@ -46,8 +46,7 @@ export async function GET(request) {
     const safeTunnelIp = escapeRouterOsString(router.wg_tunnel_ip);
     const wgPort = Number(hub.wg_port) || 51820;
 
-    const reqOrigin = new URL(request.url).origin;
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
+    const baseUrl = resolvePublicBaseUrl(request);
     const vpsSyncUrl = `${baseUrl}/api/onboarding/vps-sync`;
     const heartbeatUrl = `${baseUrl}/api/mikrotik/heartbeat?secret=${encodeURIComponent(secret)}&preserve_ip=1`;
     const refreshedWatchdog = `:if ([/ping ${hubGwIp} count=2] = 0) do={ :do { /interface wireguard disable [find where name=\\"wg-vps\\"]; :delay 2s; /interface wireguard enable [find where name=\\"wg-vps\\"] } on-error={}; :do { :local wgK [/interface wireguard get [find where name=\\"wg-vps\\"] public-key]; /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}\\" http-method=post http-header-field=\\"Content-Type: application/json\\" http-data=(\\"{\\\\\\"secret\\\\\\":\\\\\\"${escapeRouterOsString(secret)}\\\\\\",\\\\\\"wg_public_key\\\\\\":\\\\\\"\\" . \\$wgK . \\"\\\\\\"}\\") mode=https check-certificate=no keep-result=no } on-error={}; :do { /tool fetch url=\\"${escapeRouterOsString(vpsSyncUrl)}?secret=${escapeRouterOsString(secret)}\\" dst-path=\\"mcs-vps-sync.rsc\\" mode=https check-certificate=no; /import mcs-vps-sync.rsc; /file remove mcs-vps-sync.rsc } on-error={} }; :do { /tool fetch url=\\"${escapeRouterOsString(heartbeatUrl)}\\" mode=https check-certificate=no keep-result=no } on-error={}`;
@@ -56,7 +55,9 @@ export async function GET(request) {
     const script = [
       '# MyCollectiveSub Self-Healing VPS Failover Sync',
       ':if ([:len [/interface wireguard find where name="wg-vps"]] = 0) do={',
-      '  /interface wireguard add name="wg-vps" listen-port=13231 mtu=1420',
+      '  :local wgListenPort 13231',
+      '  :while ([:len [/interface wireguard find where listen-port=$wgListenPort]] > 0) do={ :set wgListenPort ($wgListenPort + 1) }',
+      '  /interface wireguard add name="wg-vps" listen-port=$wgListenPort mtu=1420',
       '}',
       ':local curPeers [/interface wireguard peers find where interface="wg-vps"]',
       ':local curAddrs [/ip address find where interface="wg-vps"]',

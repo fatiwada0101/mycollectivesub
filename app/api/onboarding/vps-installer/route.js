@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
-import { hashBootstrapToken } from '@/lib/zero-touch-onboarding.js';
+import { hashBootstrapToken, resolvePublicBaseUrl } from '@/lib/zero-touch-onboarding.js';
 import {
   isValidWgPublicKey,
   normalizeProvisionerUrl,
@@ -55,8 +55,7 @@ export async function GET(request) {
     const serverSource = await fs.readFile(path.join(process.cwd(), 'vps-provisioner', 'server.mjs'), 'utf8');
     const serverSourceB64 = Buffer.from(serverSource, 'utf8').toString('base64');
 
-    const reqOrigin = new URL(request.url).origin;
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
+    const baseUrl = resolvePublicBaseUrl(request);
     const callbackUrl = `${baseUrl}/api/onboarding/vps-installer`;
 
     const wgSubnet = parseCidrSubnet(hub.wg_subnet || DEFAULT_WG_SUBNET).cidr;
@@ -120,11 +119,15 @@ PostDown = iptables -D FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -D POS
 EOF
   chmod 600 "/etc/wireguard/\${WG_IFACE}.conf"
 else
-  # Preserve existing wg0.conf live subnet (any /16../29 mask — cloud normalizes to canonical CIDR)
+  # Preserve existing wg0.conf live subnet & ListenPort (any /16../29 mask — cloud normalizes to canonical CIDR)
   EXISTING_ADDR="$(awk -F'=' '/^[[:space:]]*Address[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); split($2,a,","); print a[1]; exit}' "/etc/wireguard/\${WG_IFACE}.conf" || true)"
   if [[ "\${EXISTING_ADDR}" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$ ]]; then
     WG_HUB_IP="\${EXISTING_ADDR}"
     WG_SUBNET="\${EXISTING_ADDR}"
+  fi
+  EXISTING_PORT="$(awk -F'=' '/^[[:space:]]*ListenPort[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "/etc/wireguard/\${WG_IFACE}.conf" || true)"
+  if [[ "\${EXISTING_PORT}" =~ ^[0-9]+$ ]] && [[ "\${EXISTING_PORT}" -ge 1024 ]] && [[ "\${EXISTING_PORT}" -le 65535 ]]; then
+    WG_PORT="\${EXISTING_PORT}"
   fi
 fi
 

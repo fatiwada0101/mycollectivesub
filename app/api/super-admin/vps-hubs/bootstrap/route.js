@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server.js';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { validateAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth.js';
-import { generateBootstrapToken, hashBootstrapToken } from '@/lib/zero-touch-onboarding.js';
+import { generateBootstrapToken, hashBootstrapToken, resolvePublicBaseUrl } from '@/lib/zero-touch-onboarding.js';
 import {
   maskVpsHub,
   suggestNextVpsSubnet,
@@ -89,8 +89,7 @@ export async function POST(request) {
 
     if (error) throw error;
 
-    const reqOrigin = new URL(request.url).origin;
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
+    const baseUrl = resolvePublicBaseUrl(request);
     const installerUrl = `${baseUrl}/api/onboarding/vps-installer?token=${rawToken}`;
     const oneLineCommand = `curl -fsSL "${installerUrl}" | sudo bash`;
     const cloudInitYaml = [

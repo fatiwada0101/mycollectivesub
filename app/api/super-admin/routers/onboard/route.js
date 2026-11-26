@@ -14,6 +14,7 @@ import {
   generateApiPassword,
   generateBootstrapToken,
   hashBootstrapToken,
+  resolvePublicBaseUrl,
 } from '@/lib/zero-touch-onboarding.js';
 import { logger } from '@/lib/logger.js';
 
@@ -207,8 +208,7 @@ export async function POST(request) {
 
     if (pendingErr) throw pendingErr;
 
-    const reqOrigin = new URL(request.url).origin;
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || reqOrigin).replace(/\/+$/, '');
+    const baseUrl = resolvePublicBaseUrl(request);
     const preserveExisting = body.preserve_existing !== false;
     const scriptUrl = `${baseUrl}/api/onboarding/bootstrap?token=${rawToken}${preserveExisting ? '' : '&preserve=0'}`;
     const oneLineCommand = `/tool fetch url="${scriptUrl}" dst-path="mcs-onboard.rsc" mode=https check-certificate=no; /import mcs-onboard.rsc; /file remove mcs-onboard.rsc`;
