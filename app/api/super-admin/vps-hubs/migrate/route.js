@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server.js';
-import { Agent } from 'undici';
+import { Agent, fetch as undiciFetch } from 'undici';
 import { supabaseAdmin } from '@/lib/supabase-server.js';
 import { validateAdminAuth, adminUnauthorizedResponse } from '@/lib/admin-auth.js';
 import {
@@ -38,7 +38,7 @@ async function tryLiveRouterCutover(router, targetHub, pollingSecret, baseUrl) {
   const syncUrl = `${baseUrl}/api/onboarding/vps-sync`;
 
   const mt = async (path, method = 'GET', body = undefined) => {
-    const res = await fetch(`${base}${path}`, {
+    const res = await undiciFetch(`${base}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
