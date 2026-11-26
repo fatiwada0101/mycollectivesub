@@ -28,7 +28,7 @@ echo "=== Installing MyCollectiveSub Zero-SSH VPS Hub on ${PUBLIC_IP} (WAN: ${WA
 # 1. System packages
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y wireguard wireguard-tools iptables-persistent ufw curl openssl ca-certificates
+apt-get install -y wireguard wireguard-tools iptables ufw curl openssl ca-certificates
 
 # 2. Install Node.js 20 LTS if missing
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | sed 's/v//' | cut -d. -f1)" -lt 18 ]]; then

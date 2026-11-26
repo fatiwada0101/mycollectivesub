@@ -87,7 +87,7 @@ echo "=== Auto-Enrolling MyCollectiveSub VPS Hub (${safeHubName}) on \${PUBLIC_I
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y wireguard wireguard-tools iptables-persistent ufw curl openssl ca-certificates
+apt-get install -y wireguard wireguard-tools iptables ufw curl openssl ca-certificates
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | sed 's/v//' | cut -d. -f1)" -lt 18 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -

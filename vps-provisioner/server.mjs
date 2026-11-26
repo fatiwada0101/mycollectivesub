@@ -134,6 +134,7 @@ export function createProvisionerServer(options = {}) {
     wgSubnet: options.wgSubnet ?? process.env.WG_SUBNET ?? '10.100.0.0/16',
     wgConfPath: options.wgConfPath ?? process.env.WG_CONF_PATH ?? '/etc/wireguard/wg0.conf',
     wgPublicKeyPath: options.wgPublicKeyPath ?? process.env.WG_PUBLIC_KEY_PATH ?? '/etc/wireguard/server_public.key',
+    natStatePath: options.natStatePath ?? process.env.NAT_STATE_PATH ?? '/opt/mycollectivesub-provisioner/peers-nat.json',
     publicIp: options.publicIp ?? process.env.VPS_PUBLIC_IP ?? '',
     provisionerPort: Number(options.provisionerPort ?? process.env.PROVISIONER_PORT ?? 9443),
     skipPerPortUfw: Boolean(options.skipPerPortUfw ?? (process.env.SKIP_PER_PORT_UFW === '1' || process.env.SKIP_PER_PORT_UFW === 'true')),
@@ -184,6 +185,45 @@ export function createProvisionerServer(options = {}) {
     }
   }
 
+  function applyPeerNatRules(tunnelIp, externalPort, dstPort = 443) {
+    ensureIptablesRule('nat', 'PREROUTING', [
+      '-p', 'tcp', '--dport', String(externalPort),
+      '-j', 'DNAT', '--to-destination', `${tunnelIp}:${dstPort}`,
+    ]);
+    ensureIptablesRule(null, 'FORWARD', [
+      '-p', 'tcp', '-d', tunnelIp, '--dport', String(dstPort), '-j', 'ACCEPT',
+    ]);
+    ensureIptablesRule('nat', 'POSTROUTING', [
+      '-o', cfg.wgInterface, '-j', 'MASQUERADE',
+    ]);
+  }
+
+  function loadNatState() {
+    try {
+      if (!fs.existsSync(cfg.natStatePath)) return {};
+      return JSON.parse(fs.readFileSync(cfg.natStatePath, 'utf8') || '{}') || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveNatState(state) {
+    try {
+      fs.writeFileSync(cfg.natStatePath, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 });
+    } catch {}
+  }
+
+  if (!cfg.dryRun) {
+    const saved = loadNatState();
+    for (const entry of Object.values(saved)) {
+      if (isValidIpv4(entry?.tunnelIp) && isValidPort(entry?.externalPort)) {
+        try {
+          applyPeerNatRules(entry.tunnelIp, entry.externalPort, Number(entry.targetPort) || 443);
+        } catch {}
+      }
+    }
+  }
+
   function registerPeer({ publicKey, tunnelIp, externalPort, targetPort = 443, routerName = '' }) {
     if (!isValidWgPublicKey(publicKey)) throw new Error('Invalid WireGuard public key format');
     if (!isValidIpv4(tunnelIp)) throw new Error('Invalid WireGuard tunnel IPv4 address');
@@ -215,17 +255,11 @@ export function createProvisionerServer(options = {}) {
     // 2. Persist peer cleanly in /etc/wireguard/wg0.conf
     upsertPeerInWgConf(cfg.wgConfPath, { publicKey, tunnelIp, routerName });
 
-    // 3. Idempotent iptables DNAT + FORWARD + WireGuard return MASQUERADE + UFW allow
-    ensureIptablesRule('nat', 'PREROUTING', [
-      '-p', 'tcp', '--dport', String(externalPort),
-      '-j', 'DNAT', '--to-destination', `${tunnelIp}:${dstPort}`,
-    ]);
-    ensureIptablesRule(null, 'FORWARD', [
-      '-p', 'tcp', '-d', tunnelIp, '--dport', String(dstPort), '-j', 'ACCEPT',
-    ]);
-    ensureIptablesRule('nat', 'POSTROUTING', [
-      '-o', cfg.wgInterface, '-j', 'MASQUERADE',
-    ]);
+    // 3. Idempotent iptables DNAT + FORWARD + WireGuard return MASQUERADE + boot-safe state file
+    applyPeerNatRules(tunnelIp, externalPort, dstPort);
+    const natState = loadNatState();
+    natState[publicKey] = { publicKey, tunnelIp, externalPort: Number(externalPort), targetPort: dstPort, routerName };
+    saveNatState(natState);
     if (!cfg.skipPerPortUfw) {
       try {
         execFileSync('ufw', ['allow', `${externalPort}/tcp`], { stdio: 'ignore' });
@@ -254,6 +288,12 @@ export function createProvisionerServer(options = {}) {
       execFileSync('wg', ['set', cfg.wgInterface, 'peer', publicKey, 'remove'], { stdio: 'ignore' });
     } catch {}
     removePeerFromWgConf(cfg.wgConfPath, publicKey);
+
+    const natState = loadNatState();
+    if (natState[publicKey]) {
+      delete natState[publicKey];
+      saveNatState(natState);
+    }
 
     if (isValidIpv4(tunnelIp) && isValidPort(externalPort)) {
       const dstPort = Number(targetPort) || 443;
