@@ -102,12 +102,20 @@ grep -q '^net.netfilter.nf_conntrack_max=' /etc/sysctl.conf || echo 'net.netfilt
 
 mkdir -p /etc/wireguard
 chmod 700 /etc/wireguard
+if [[ -f "/etc/wireguard/\${WG_IFACE}.conf" ]]; then
+  EXISTING_PRIV="$(grep -E '^[[:space:]]*PrivateKey[[:space:]]*=' "/etc/wireguard/\${WG_IFACE}.conf" | head -n1 | sed 's/^[^=]*=[[:space:]]*//' | tr -d '[:space:]' || true)"
+  if [[ -n "\${EXISTING_PRIV}" ]]; then
+    umask 077
+    printf '%s\\n' "\${EXISTING_PRIV}" > /etc/wireguard/server_private.key
+    printf '%s\\n' "\${EXISTING_PRIV}" | wg pubkey > /etc/wireguard/server_public.key
+  fi
+fi
 if [[ ! -f /etc/wireguard/server_private.key ]]; then
   umask 077
   wg genkey | tee /etc/wireguard/server_private.key | wg pubkey > /etc/wireguard/server_public.key
 fi
 SERVER_PRIV="$(cat /etc/wireguard/server_private.key)"
-SERVER_PUB="$(cat /etc/wireguard/server_public.key)"
+SERVER_PUB="$(wg show "\${WG_IFACE}" public-key 2>/dev/null || cat /etc/wireguard/server_public.key)"
 
 if [[ ! -f "/etc/wireguard/\${WG_IFACE}.conf" ]]; then
   cat <<EOF > "/etc/wireguard/\${WG_IFACE}.conf"
@@ -115,8 +123,8 @@ if [[ ! -f "/etc/wireguard/\${WG_IFACE}.conf" ]]; then
 Address = \${WG_HUB_IP}
 ListenPort = \${WG_PORT}
 PrivateKey = \${SERVER_PRIV}
-PostUp = iptables -A FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -A POSTROUTING -o \${WAN_IFACE} -j MASQUERADE
-PostDown = iptables -D FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -D POSTROUTING -o \${WAN_IFACE} -j MASQUERADE
+PostUp = iptables -A FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -A POSTROUTING -o \${WAN_IFACE} -j MASQUERADE; iptables -t nat -A POSTROUTING -o \${WG_IFACE} -j MASQUERADE
+PostDown = iptables -D FORWARD -i \${WG_IFACE} -j ACCEPT; iptables -t nat -D POSTROUTING -o \${WAN_IFACE} -j MASQUERADE; iptables -t nat -D POSTROUTING -o \${WG_IFACE} -j MASQUERADE
 EOF
   chmod 600 "/etc/wireguard/\${WG_IFACE}.conf"
 else

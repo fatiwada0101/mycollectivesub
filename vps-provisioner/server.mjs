@@ -215,13 +215,16 @@ export function createProvisionerServer(options = {}) {
     // 2. Persist peer cleanly in /etc/wireguard/wg0.conf
     upsertPeerInWgConf(cfg.wgConfPath, { publicKey, tunnelIp, routerName });
 
-    // 3. Idempotent iptables DNAT + FORWARD + UFW allow
+    // 3. Idempotent iptables DNAT + FORWARD + WireGuard return MASQUERADE + UFW allow
     ensureIptablesRule('nat', 'PREROUTING', [
       '-p', 'tcp', '--dport', String(externalPort),
       '-j', 'DNAT', '--to-destination', `${tunnelIp}:${dstPort}`,
     ]);
     ensureIptablesRule(null, 'FORWARD', [
       '-p', 'tcp', '-d', tunnelIp, '--dport', String(dstPort), '-j', 'ACCEPT',
+    ]);
+    ensureIptablesRule('nat', 'POSTROUTING', [
+      '-o', cfg.wgInterface, '-j', 'MASQUERADE',
     ]);
     if (!cfg.skipPerPortUfw) {
       try {
