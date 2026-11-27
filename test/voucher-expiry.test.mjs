@@ -341,3 +341,46 @@ test('all current and future profiles enforce strict first-login wall-clock expi
   assert.ok(plansSrc.includes('syncPlanProfileToOnlineRouters'));
   assert.ok(mikrotikSrc.includes('syncPlanProfileToOnlineRouters'));
 });
+
+test('sweep script filters disabled/unused stock in native RouterOS C and installer avoids redundant runs when already active', async () => {
+  assert.ok(EXPIRY_SWEEP_SCRIPT.includes('disabled=no comment~"^ANV1[|][0-9]+[|][1-9]"'), 'sweep script must skip disabled and unused deadline=0 vouchers natively');
+  assert.ok(EXPIRY_SWEEP_SCRIPT.includes('/ip hotspot active find'), 'clock-not-ready guard must only scan active sessions');
+
+  const writes = [];
+  const iso = new Date().toISOString();
+  const profile = {
+    '.id': '*1',
+    name: 'an-factory-1-12M-12M',
+    'on-login': `${FIRST_LOGIN_SCRIPT}\n`,
+    'keepalive-timeout': '2m',
+    'add-mac-cookie': 'true',
+    'mac-cookie-timeout': '4w2d',
+  };
+  const get = {
+    '/system/resource': { version: '7.20.8 (long-term)' },
+    '/system/ntp/client': { status: 'synchronized' },
+    '/system/clock': { date: iso.slice(0, 10), time: iso.slice(11, 19), 'gmt-offset': '+00:00' },
+    '/ip/hotspot/user/profile': [profile],
+    '/system/script': [{ '.id': '*s1', name: 'an-voucher-expiry-v1', source: EXPIRY_SWEEP_SCRIPT, 'run-count': '42' }],
+    '/system/scheduler': [{ '.id': '*sch1', name: 'an-voucher-expiry-v1', 'start-time': 'startup', interval: '10s', 'on-event': '/system script run an-voucher-expiry-v1', disabled: 'false' }],
+  };
+
+  await installFirstLoginExpiry(async (path, method = 'GET', body) => {
+    if (method === 'GET') return get[path];
+    writes.push({ path, method, body });
+    return {};
+  }, 'an-factory-1-12M-12M', [profile]);
+
+  assert.equal(writes.length, 0, 'already-installed and verified expiry setup must perform 0 redundant writes/script runs');
+
+  // If script source is outdated (upgrade), it MUST patch AND run /system/script/run to verify syntax/permissions
+  get['/system/script'][0].source = 'old sweep script';
+  await installFirstLoginExpiry(async (path, method = 'GET', body) => {
+    if (method === 'GET') return get[path];
+    writes.push({ path, method, body });
+    return {};
+  }, 'an-factory-1-12M-12M', [profile]);
+
+  assert.ok(writes.some(w => w.path === '/system/script/*s1' && w.method === 'PATCH'), 'outdated sweep script must be upgraded');
+  assert.ok(writes.some(w => w.path === '/system/script/run' && w.method === 'POST'), 'upgraded sweep script must be verified once via /system/script/run');
+});
